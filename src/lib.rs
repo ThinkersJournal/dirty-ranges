@@ -47,4 +47,4 @@ pub use range::{Range, coalesce};
 pub use scan::{ScanError, Scanner};
 
 #[cfg(unix)]
-pub use region::{Error, Region};
+pub use region::{Error, Region, fault_signals_blocked};

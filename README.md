@@ -26,4 +26,10 @@ records what the conformance harness (a throwaway spike, not this crate) showed.
 Also UNVERIFIED: `vm.max_map_count` exhaustion, and coexistence with real JVM, Go or sanitizer signal handlers.
 Harness run: GitHub hosted runners, run 39144443214 (reported by the portfolio PM, 2026-10-18).
 
+## Known limits
+
+- **A thread that blocks `SIGSEGV`/`SIGBUS` must not write to a trapped region.** The kernel cannot deliver the fault to our handler, so it kills the process (Linux with `SIGSEGV`, macOS with `SIGKILL`). That is fatal and loud, never silent corruption, and it is tested. `fault_signals_blocked()` lets a caller check a thread before it writes. `Region::arm` does not check the arming thread: the writers are what matter.
+- Never `read()`/`recv()` from the OS into a trapped region: the kernel reports `EFAULT` or a partial write instead of faulting.
+- At most 64 regions per process.
+
 Licensed under MIT OR Apache-2.0.

@@ -16,9 +16,6 @@ pub enum Error {
     Misaligned { page_size: usize },
     /// The process already tracks the maximum number of regions.
     RegistryFull,
-    /// The calling thread blocks `SIGSEGV`/`SIGBUS`. A write to a trapped page from such a thread is fatal
-    /// (the kernel kills the process), so refusing here is the safe answer.
-    SignalsBlocked { segv: bool, bus: bool },
     /// An operating-system call failed.
     Os(std::io::Error),
 }
@@ -35,10 +32,6 @@ impl core::fmt::Display for Error {
             Self::RegistryFull => write!(
                 f,
                 "the process already tracks the maximum number of regions"
-            ),
-            Self::SignalsBlocked { segv, bus } => write!(
-                f,
-                "the calling thread blocks SIGSEGV={segv} SIGBUS={bus}; a write to a trapped page from it would kill the process"
             ),
             Self::Os(e) => write!(f, "operating system error: {e}"),
         }
@@ -181,7 +174,22 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
     }
 }
 
+/// Whether the calling thread blocks `SIGSEGV` or `SIGBUS`.
+///
+/// **A thread that blocks them must not write to a trapped region.** The kernel cannot deliver the fault to
+/// the handler, so it kills the process (Linux with `SIGSEGV`, macOS with `SIGKILL`). That is fatal and loud,
+/// never silent corruption, and it is tested (`a_write_from_a_thread_that_blocks_the_fault_signals_is_fatal`).
+/// `Region::arm` does not look at the arming thread's mask, because the threads that matter are the writers,
+/// which it cannot see: call this on a thread you are about to let write if its mask is not under your control.
+pub fn fault_signals_blocked() -> bool {
+    let (segv, bus) = sys::blocked_fault_signals();
+    segv || bus
+}
+
 /// A memory region whose writes are trapped page by page.
+///
+/// Every thread that writes to the region must leave `SIGSEGV` and `SIGBUS` unblocked; see
+/// [`fault_signals_blocked`].
 pub struct Region {
     inner: *mut Inner,
     slot: usize,
@@ -201,10 +209,6 @@ impl Region {
     /// `ptr..ptr+len` must be a live mapping that stays valid until the `Region` is dropped, and nothing may
     /// read from the OS into it (`read`, `recv`) while armed: the kernel reports `EFAULT` instead of faulting.
     pub unsafe fn arm(ptr: *mut u8, len: usize, pool_pages: usize) -> Result<Region, Error> {
-        let (segv, bus) = sys::blocked_fault_signals();
-        if segv || bus {
-            return Err(Error::SignalsBlocked { segv, bus });
-        }
         let page = sys::page_size();
         if !(ptr as usize).is_multiple_of(page) || !len.is_multiple_of(page) {
             return Err(Error::Misaligned { page_size: page });
@@ -474,41 +478,37 @@ mod tests {
         assert_eq!(region.page_size(), m.page());
     }
 
-    #[test]
-    fn arming_from_a_thread_that_blocks_the_fault_signals_is_refused() {
-        let m = std::sync::Arc::new(Map::new(2));
-        let m2 = m.clone();
-        let err = std::thread::spawn(move || {
+    fn on_a_thread_that_blocks(sig: libc::c_int, f: impl FnOnce() + Send + 'static) {
+        std::thread::spawn(move || {
             let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
             unsafe {
                 libc::sigemptyset(&mut set);
-                libc::sigaddset(&mut set, libc::SIGSEGV);
+                libc::sigaddset(&mut set, sig);
                 libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
-                Region::arm(m2.ptr, m2.len, 4).err()
             }
+            f();
         })
         .join()
         .unwrap();
-        assert!(matches!(err, Some(Error::SignalsBlocked { .. })));
-        // The block was one thread's: other threads still arm fine.
-        assert!(unsafe { Region::arm(m.ptr, m.len, 4) }.is_ok());
     }
 
     #[test]
-    fn arming_from_a_thread_that_blocks_sigbus_is_refused() {
+    fn the_query_reports_whether_this_thread_blocks_the_fault_signals() {
+        assert!(!fault_signals_blocked());
+        on_a_thread_that_blocks(libc::SIGSEGV, || assert!(fault_signals_blocked()));
+        on_a_thread_that_blocks(libc::SIGBUS, || assert!(fault_signals_blocked()));
+        assert!(!fault_signals_blocked(), "the block was one thread's");
+    }
+
+    /// Arming does not look at the arming thread's mask: what is fatal is a *writer* thread that blocks the
+    /// signals, and `arm` cannot see the writers. Callers query `fault_signals_blocked` where they care.
+    #[test]
+    fn arming_does_not_depend_on_the_arming_threads_signal_mask() {
         let m = std::sync::Arc::new(Map::new(2));
-        let err = std::thread::spawn(move || {
-            let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
-            unsafe {
-                libc::sigemptyset(&mut set);
-                libc::sigaddset(&mut set, libc::SIGBUS);
-                libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
-                Region::arm(m.ptr, m.len, 4).err()
-            }
-        })
-        .join()
-        .unwrap();
-        assert!(matches!(err, Some(Error::SignalsBlocked { .. })));
+        let m2 = m.clone();
+        on_a_thread_that_blocks(libc::SIGSEGV, move || {
+            assert!(unsafe { Region::arm(m2.ptr, m2.len, 4) }.is_ok());
+        });
     }
 
     #[test]
