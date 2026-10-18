@@ -1,6 +1,14 @@
-//! Detect which byte ranges of a memory region changed (name reserved; first real release pending).
+//! Detect which byte ranges of a memory region changed (first real release pending).
 //!
-//! The design is in `docs/DESIGN.md`. This crate is currently an empty skeleton so that CI has
-//! something to run.
+//! The design is in `docs/DESIGN.md`. This slice holds only the safe core: range coalescing, the byte
+//! diff and the per-page state machine. There is no OS-specific code yet.
 #![deny(unsafe_code)]
 #![deny(unsafe_op_in_unsafe_fn)]
+
+mod diff;
+mod page_state;
+mod range;
+
+pub use diff::diff;
+pub use page_state::{PageState, State};
+pub use range::{Range, coalesce};
