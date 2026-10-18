@@ -1,7 +1,29 @@
 # dirty-ranges
 
-Detect which byte ranges of a memory region changed between snapshots.
+Detect which byte ranges of a memory region changed.
 
-Name reserved (0.0.0 placeholder). The first real release follows its design; see the repository for status.
+**Status: pre-release (0.0.x).** The safe core (range coalescing, byte diff, page-state machine) exists; the
+OS-specific page-fault trapping and the public `Region` API do not yet. The design is in
+[`docs/DESIGN.md`](docs/DESIGN.md).
+
+## Platform support
+
+Page-fault trapping (with automatic fallback to scanning) is the goal on every major OS. A platform is
+**TESTED** only when this crate itself passes the trap-conformance cases in CI on it; until then the table
+records what the conformance harness (a throwaway spike, not this crate) showed.
+
+| Platform | Harness result | This crate |
+|---|---|---|
+| Linux x86_64 / aarch64, glibc | PASS (real hardware) | not yet implemented |
+| Linux x86_64 / aarch64, musl | PASS | not yet implemented |
+| Windows x86_64 / arm64 | PASS | not yet implemented |
+| macOS arm64 (16 KiB pages) / x86_64 | PASS, except one Linux-shaped assertion the harness is fixing (macOS kills with SIGKILL; still fatal, as required) | not yet implemented |
+| FreeBSD (VM) | PASS | not yet implemented |
+| NetBSD, OpenBSD | UNVERIFIED | not yet implemented |
+| Linux with 64 KiB pages | UNVERIFIED | not yet implemented |
+| 32-bit targets | UNVERIFIED | not yet implemented |
+
+Also UNVERIFIED: `vm.max_map_count` exhaustion, and coexistence with real JVM, Go or sanitizer signal handlers.
+Harness run: GitHub hosted runners, run 39144443214 (reported by the portfolio PM, 2026-10-18).
 
 Licensed under MIT OR Apache-2.0.
