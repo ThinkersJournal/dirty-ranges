@@ -212,4 +212,32 @@ mod tests {
         assert!(s.is_empty());
         assert_eq!(s.scan(&[]).unwrap(), vec![]);
     }
+
+    #[test]
+    fn len_and_is_empty_describe_the_region() {
+        let s = Scanner::new(&[1, 2, 3]);
+        assert_eq!(s.len(), 3);
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn errors_say_what_went_wrong() {
+        assert_eq!(
+            ScanError::LengthMismatch {
+                expected: 8,
+                actual: 7
+            }
+            .to_string(),
+            "live region is 7 bytes, scanner was created for 8"
+        );
+        assert_eq!(
+            ScanError::OutOfBounds {
+                offset: 6,
+                len: 3,
+                region_len: 8
+            }
+            .to_string(),
+            "write of 3 bytes at 6 is outside a 8-byte region"
+        );
+    }
 }
