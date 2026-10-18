@@ -8,7 +8,9 @@
 mod diff;
 mod page_state;
 mod range;
+mod scan;
 
 pub use diff::diff;
 pub use page_state::{PageState, State};
 pub use range::{Range, coalesce};
+pub use scan::{ScanError, Scanner};

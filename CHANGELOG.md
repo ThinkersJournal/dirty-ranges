@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.4
+- `Scanner`: scan mode over byte slices (baseline, coalesced changed ranges, `apply_remote` without echo). Safe code, no OS dependency.
+
 ## 0.0.3
 - Docs: README platform table (TESTED/UNVERIFIED) and the trap-conformance results and handler rules in `docs/DESIGN.md`.
 
