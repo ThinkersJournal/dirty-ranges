@@ -25,6 +25,20 @@ Consumers: `commy-sdk-rust` (every SDK instance maps a file and finds its own wr
 - Detecting writes by *other* processes (only the owner's writes are tracked).
 - Never silently do nothing on an unsupported platform.
 
+## Platform support (CireSnave, 2026-10-18: all major OSes, at the least Windows, Linux, BSD, macOS)
+First-class targets, all with Trapped and Scanned modes: **Windows, Linux, macOS, FreeBSD, NetBSD, OpenBSD.**
+No target is "best effort" by design; where a platform cannot be verified yet it is listed UNVERIFIED with
+the reason, never silently downgraded.
+- `sys/windows`: VEH + `VirtualProtect`; views via `MapViewOfFile`.
+- `sys/unix`: shared `sigaction` (`SA_SIGINFO`) + `mprotect` + double `mmap(MAP_SHARED)` alias for Linux, macOS and
+  the BSDs. Per-OS shims: which signals are caught (`SIGSEGV` and `SIGBUS` on macOS/BSD), the fault-address field of
+  `siginfo_t`/`ucontext`, runtime page size (16 KB on Apple Silicon).
+- macOS alternative if signals prove inadequate: Mach `EXC_BAD_ACCESS` exception port served by a handler thread.
+- Scan-only fallback exists for any other target and for pages that cannot be armed; selecting it is explicit and reported.
+- Not-yet-verified (from lane knowledge, untested): macOS, FreeBSD, NetBSD, OpenBSD, aarch64. CI covers Linux, Windows,
+  macOS on hosted runners; the BSDs need a VM or self-hosted runner (PM request, EXPECTATIONS 5.1g/h) and
+  `cross`/`cargo check --target` builds as a floor.
+
 ## API sketch (proposal; names are open)
 ```rust
 pub struct Range { pub offset: usize, pub len: usize }          // optional serde feature
@@ -49,7 +63,7 @@ pages, put them in Scanned mode and report which.
 
 ## Hard rules (documented, and enforced where possible)
 - Never `read()`/`recv()` into a trapped view (Linux: EFAULT/partial write; Windows: error 998/10053, socket dies).
-- Unsupported platform: compile error or an explicit, documented scan-only fallback (macOS best-effort).
+- Unsupported platform (outside the list above): explicit, documented scan-only fallback or compile error, never silent.
 
 ## Performance targets
 Fault ≤15 µs (spike: 11–12 µs Linux); re-protect 1024 pages ≈0.1 ms (spike 116–145 µs); diff word/SIMD ≥2 GB/s
@@ -68,7 +82,7 @@ Fault ≤15 µs (spike: 11–12 µs Linux); re-protect 1024 pages ≈0.1 ms (spi
 
 ## Testing
 Red-first. Real `mmap`/`MapViewOfFile` tests on Windows+Linux (Miri not applicable to the handler); pure
-diff/coalesce logic gets property tests + `cargo-mutants` before 0.1.0. CI matrix Windows/Linux/macOS.
+diff/coalesce logic gets property tests + `cargo-mutants` before 0.1.0. CI matrix Windows/Linux/macOS; BSD runs per the platform section.
 Untested so far (from the lanes): glibc, macOS, aarch64, /mnt/c, tmpfs, userfaultfd-wp, second real user,
 antivirus, pool exhaustion.
 
