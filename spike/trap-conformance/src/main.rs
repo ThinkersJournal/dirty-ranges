@@ -850,7 +850,8 @@ fn run_all() -> i32 {
         "sigmask_blocked_is_fatal",
         Box::new(move || {
             let o = spawn_case("sigmask_blocked_is_fatal", t);
-            if died_by_fault(&o.status) {
+            // Linux kills with SIGSEGV; macOS kills with SIGKILL. Any fatal termination is the documented property.
+            if died_by_fault(&o.status) || sig_of(&o.status) == "signal 9" {
                 Verdict::Pass(format!(
                     "EXPECTED FATAL ({}): blocked SIGSEGV cannot be handled; crate must guard",
                     sig_of(&o.status)

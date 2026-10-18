@@ -49,7 +49,11 @@ die) and prints one `RESULT|<platform>|<case>|PASS/FAIL|<detail>` line per case,
 | Linux x86_64 glibc 2.36 (rust:bookworm in Docker/WSL2 kernel 6.18) | TESTED, all PASS | local run |
 | Linux x86_64 musl (rust:alpine) | TESTED, all PASS (main-thread overflow prints no message, identical to control) | local run |
 | Linux aarch64 glibc | TESTED UNDER QEMU USER-MODE EMULATION ONLY: all PASS. Functional evidence, not hardware (QEMU emulates faults and mprotect) | local run, `docker --platform linux/arm64` |
-| Linux aarch64 glibc on real hardware (ubuntu-24.04-arm) | UNVERIFIED until CI | workflow job `native` |
-| macOS Apple Silicon (16 KiB pages, SIGBUS vs SIGSEGV) | UNVERIFIED until CI | workflow job `native` |
-| macOS Intel, Windows arm64, FreeBSD | UNVERIFIED until CI (experimental jobs) | workflow |
+| Linux aarch64 glibc, real hardware (ubuntu-24.04-arm) | TESTED, all PASS | CI run 39144443214 (read by the PM) |
+| Linux x86_64 and aarch64 musl (alpine, real hardware for arm64) | TESTED, all PASS | same run |
+| Windows x86_64 and Windows arm64 (real) | TESTED, all PASS | same run |
+| FreeBSD (VM) | TESTED, all PASS | same run |
+| macOS Apple Silicon (16 KiB pages) and macOS Intel | TESTED: all PASS except `sigmask_blocked_is_fatal`, whose assertion was Linux-shaped (macOS kills with SIGKILL, still fatal); assertion fixed in the next commit, rerun pending | same run |
+| NetBSD, OpenBSD | UNVERIFIED | only FreeBSD ran |
 | Linux with 64 KiB pages | UNVERIFIED (no runner) | - |
+| `vm.max_map_count` exhaustion, real JVM/Go/sanitizer handlers, `apply_remote` alias view | UNVERIFIED / not covered | - |
