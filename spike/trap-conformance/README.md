@@ -40,3 +40,16 @@ die) and prints one `RESULT|<platform>|<case>|PASS/FAIL|<detail>` line per case,
 * Other runtimes' handlers (JVM, Go, sanitizers) beyond the stand-in handler in the chain cases.
 * Pages larger than 16 KiB (Linux 64 KiB aarch64 kernels) - no CI runner offers one.
 * `apply_remote` (writes through a second alias view) is out of scope here.
+
+## Status per platform (local runs, rustc 1.98-1.99, 2026-10-18)
+
+| platform | status | evidence |
+|---|---|---|
+| Windows 11 x86_64 MSVC (4 KiB) | TESTED, all cases PASS | local run |
+| Linux x86_64 glibc 2.36 (rust:bookworm in Docker/WSL2 kernel 6.18) | TESTED, all PASS | local run |
+| Linux x86_64 musl (rust:alpine) | TESTED, all PASS (main-thread overflow prints no message, identical to control) | local run |
+| Linux aarch64 glibc | TESTED UNDER QEMU USER-MODE EMULATION ONLY: all PASS. Functional evidence, not hardware (QEMU emulates faults and mprotect) | local run, `docker --platform linux/arm64` |
+| Linux aarch64 glibc on real hardware (ubuntu-24.04-arm) | UNVERIFIED until CI | workflow job `native` |
+| macOS Apple Silicon (16 KiB pages, SIGBUS vs SIGSEGV) | UNVERIFIED until CI | workflow job `native` |
+| macOS Intel, Windows arm64, FreeBSD | UNVERIFIED until CI (experimental jobs) | workflow |
+| Linux with 64 KiB pages | UNVERIFIED (no runner) | - |
