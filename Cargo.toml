@@ -1,6 +1,6 @@
 [package]
 name = "dirty-ranges"
-version = "0.0.0"
+version = "0.0.1"
 edition = "2021"
 description = "Detect which byte ranges of a memory region changed between snapshots (name reserved; first release pending)."
 license = "MIT OR Apache-2.0"

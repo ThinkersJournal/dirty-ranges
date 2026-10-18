@@ -55,10 +55,16 @@ pages, put them in Scanned mode and report which.
 Fault ≤15 µs (spike: 11–12 µs Linux); re-protect 1024 pages ≈0.1 ms (spike 116–145 µs); diff word/SIMD ≥2 GB/s
 (spike naive diff: 0.3 GB/s); scan 128 MB ≈18 ms (memcmp).
 
-## Unsafe policy
-The portfolio default is `#![forbid(unsafe_code)]`; this crate **cannot** meet it (signal/VEH handlers, mprotect,
-raw pointers). Proposal: unsafe confined to `sys/{windows,unix}` and `region` modules, each block with a
-`// SAFETY:` justification and a test; everything else (`diff`, `range` coalescing) is safe code. **To confirm with PM.**
+## Unsafe policy (approved by PM 2026-10-18, with conditions)
+- `#![deny(unsafe_code)]` and `#![deny(unsafe_op_in_unsafe_fn)]` at the crate root.
+- `#[expect(unsafe_code, reason = "...")]` (reason mandatory, no bare `allow`) only on the `sys/` and `region` modules.
+- Every `unsafe` block carries a `// SAFETY:` comment stating the invariant.
+- `diff` and range coalescing stay safe code and carry the mutation testing.
+- Miri runs on what Miri can run. The VEH / SIGSEGV / `mprotect` paths cannot run under Miri and are named
+  **UNVERIFIED-by-Miri**, each with its real-mapping test.
+- Any soundness bug is treated as a security advisory (CireSnave 2026-10-18 RustSec rule).
+- Unsafe surface (to be kept current): `sys/windows` (VEH, `VirtualProtect`, `MapViewOfFile` aliasing),
+  `sys/unix` (`sigaction`, `mprotect`, `mmap` aliasing), `region` (raw ptr+len slices, twin/scratch pool, atomics-guarded handler state).
 
 ## Testing
 Red-first. Real `mmap`/`MapViewOfFile` tests on Windows+Linux (Miri not applicable to the handler); pure
@@ -71,7 +77,7 @@ edition 2024, rust-version 1.94, newest crates.io deps (`libc`, `windows-sys`, o
 deps, MIT OR Apache-2.0, CHANGELOG, first release 0.1.0 (PM allocates versions and publishes).
 
 ## Open questions
-1. Unsafe policy above (PM).
+1. (resolved) Unsafe policy.
 2. `flush()` returning `Vec` vs caller-provided buffer (allocation-free flush?).
 3. Page-size handling (4 KB vs 16 KB aarch64/macOS, Windows allocation granularity 64 KB for views).
 4. File-backed vs anonymous regions: does `Region` own the mapping or only borrow ptr+len? (SDK lane: ptr+len.)
