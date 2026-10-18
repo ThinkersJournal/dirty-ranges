@@ -1,0 +1,10 @@
+[package]
+name = "dirty-ranges"
+version = "0.0.0"
+edition = "2021"
+description = "Detect which byte ranges of a memory region changed between snapshots (name reserved; first release pending)."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ThinkersJournal/dirty-ranges"
+readme = "README.md"
+keywords = ["memory", "diff", "shared-memory", "change-detection"]
+categories = ["memory-management"]
