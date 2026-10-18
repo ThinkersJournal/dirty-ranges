@@ -24,17 +24,18 @@ static INSTALL: Once = Once::new();
 /// `0` if installation succeeded, otherwise the `errno` it failed with.
 static INSTALL_ERRNO: AtomicI32 = AtomicI32::new(0);
 
-/// Whether the calling thread blocks `SIGSEGV` or `SIGBUS`.
-pub(crate) fn fault_signals_blocked() -> bool {
+/// Which of `SIGSEGV` and `SIGBUS` the calling thread blocks, as `(segv, bus)`.
+pub(crate) fn blocked_fault_signals() -> (bool, bool) {
     // SAFETY: with a null `set`, `pthread_sigmask` only reads the calling thread's mask into `current`.
     unsafe {
         let mut current: libc::sigset_t = std::mem::zeroed();
         if libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current) != 0 {
-            return false;
+            return (false, false);
         }
-        SIGNALS
-            .iter()
-            .any(|&sig| libc::sigismember(&current, sig) == 1)
+        (
+            libc::sigismember(&current, libc::SIGSEGV) == 1,
+            libc::sigismember(&current, libc::SIGBUS) == 1,
+        )
     }
 }
 

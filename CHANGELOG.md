@@ -2,7 +2,7 @@
 
 ## 0.0.6
 - Conformance suite (`tests/conformance.rs`), ported from the SDK lane's spike: page size and boundary-straddling ranges, pool exhaustion with scan fallback, stores racing the flush window, faults inside a libc `FILE` lock, `errno` preserved. Controls (compiled only with `--cfg dirty_ranges_conformance`) show the checks can fail: clobbered `errno`, and a flush that skips re-protecting. New CI job `conformance`.
-- `Region::arm` now refuses (`Error::SignalsBlocked`) from a thread that blocks `SIGSEGV`/`SIGBUS`.
+- `Region::arm` now refuses (`Error::SignalsBlocked { segv, bus }`, naming which signal) from a thread that blocks `SIGSEGV`/`SIGBUS`.
 
 ## 0.0.5
 - Unix page-fault trapping: `Region::arm` / `flush` / `armed_pages` / `page_size`, a process-wide `SIGSEGV`/`SIGBUS` handler with a lock-free multi-region registry (64 slots), `mprotect`, and double-buffered baselines. `PageState::abort_capture`. Linux glibc tested locally (Docker); macOS, FreeBSD, NetBSD only type-checked. Not yet: Windows, mode switching, `apply_remote`, the conformance cases in CI.

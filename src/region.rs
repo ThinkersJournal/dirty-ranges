@@ -18,7 +18,7 @@ pub enum Error {
     RegistryFull,
     /// The calling thread blocks `SIGSEGV`/`SIGBUS`. A write to a trapped page from such a thread is fatal
     /// (the kernel kills the process), so refusing here is the safe answer.
-    SignalsBlocked,
+    SignalsBlocked { segv: bool, bus: bool },
     /// An operating-system call failed.
     Os(std::io::Error),
 }
@@ -36,9 +36,9 @@ impl core::fmt::Display for Error {
                 f,
                 "the process already tracks the maximum number of regions"
             ),
-            Self::SignalsBlocked => write!(
+            Self::SignalsBlocked { segv, bus } => write!(
                 f,
-                "the calling thread blocks SIGSEGV/SIGBUS; a write to a trapped page from it would kill the process"
+                "the calling thread blocks SIGSEGV={segv} SIGBUS={bus}; a write to a trapped page from it would kill the process"
             ),
             Self::Os(e) => write!(f, "operating system error: {e}"),
         }
@@ -201,8 +201,9 @@ impl Region {
     /// `ptr..ptr+len` must be a live mapping that stays valid until the `Region` is dropped, and nothing may
     /// read from the OS into it (`read`, `recv`) while armed: the kernel reports `EFAULT` instead of faulting.
     pub unsafe fn arm(ptr: *mut u8, len: usize, pool_pages: usize) -> Result<Region, Error> {
-        if sys::fault_signals_blocked() {
-            return Err(Error::SignalsBlocked);
+        let (segv, bus) = sys::blocked_fault_signals();
+        if segv || bus {
+            return Err(Error::SignalsBlocked { segv, bus });
         }
         let page = sys::page_size();
         if !(ptr as usize).is_multiple_of(page) || !len.is_multiple_of(page) {
@@ -488,7 +489,7 @@ mod tests {
         })
         .join()
         .unwrap();
-        assert!(matches!(err, Some(Error::SignalsBlocked)));
+        assert!(matches!(err, Some(Error::SignalsBlocked { .. })));
         // The block was one thread's: other threads still arm fine.
         assert!(unsafe { Region::arm(m.ptr, m.len, 4) }.is_ok());
     }
@@ -507,7 +508,7 @@ mod tests {
         })
         .join()
         .unwrap();
-        assert!(matches!(err, Some(Error::SignalsBlocked)));
+        assert!(matches!(err, Some(Error::SignalsBlocked { .. })));
     }
 
     #[test]
