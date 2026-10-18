@@ -1,0 +1,80 @@
+name: trap-conformance
+
+# SPIKE (branch spike/trap-conformance, not for merge): runs the page-fault trap conformance harness on real
+# hardware/OS combinations. Every case prints a RESULT| line and a table in the job summary.
+
+on:
+  push:
+    branches: [spike/trap-conformance]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  native:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, experimental: false }      # x86_64 glibc
+          - { os: ubuntu-24.04-arm, experimental: false }  # aarch64 glibc, real hardware
+          - { os: macos-latest, experimental: false }      # Apple Silicon (16 KiB pages)
+          - { os: macos-15-intel, experimental: true }     # x86_64 macOS
+          - { os: windows-latest, experimental: false }    # x86_64 MSVC
+          - { os: windows-11-arm, experimental: true }     # aarch64 MSVC
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - name: conformance
+        shell: bash
+        run: cargo run --release --manifest-path spike/trap-conformance/Cargo.toml 2>&1 | tee conformance.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: conformance-${{ matrix.os }}
+          path: conformance.txt
+
+  musl:
+    name: alpine-musl (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: conformance in rust:alpine
+        run: |
+          docker run --rm -v "$PWD:/w" -w /w/spike/trap-conformance -e CARGO_TARGET_DIR=/tmp/t rust:alpine \
+            sh -c 'apk add --no-cache musl-dev >/dev/null && cargo run --release' 2>&1 | tee conformance.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: conformance-musl-${{ matrix.os }}
+          path: conformance.txt
+
+  freebsd:
+    name: freebsd
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: conformance in a FreeBSD VM
+        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641 # v1.6.0
+        with:
+          operating_system: freebsd
+          version: '14.2'
+          run: |
+            sudo pkg install -y rust
+            cd spike/trap-conformance
+            cargo run --release

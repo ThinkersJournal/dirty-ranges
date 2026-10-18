@@ -1,0 +1,27 @@
+[package]
+name = "trap-conformance"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Conformance harness for the page-fault write-trap mechanism (spike; not part of the dirty-ranges crate)."
+license = "MIT OR Apache-2.0"
+
+[workspace]
+
+[dependencies]
+memmap2 = "0.9"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Memory",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Kernel",
+  "Win32_System_SystemInformation",
+] }
+
+[profile.release]
+debug = 1
