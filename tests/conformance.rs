@@ -185,10 +185,10 @@ fn thread_mask_bits() -> u32 {
     }
 }
 
-/// `Region::arm` refuses a thread that blocks SIGSEGV/SIGBUS, so a thread must never start with them blocked
-/// merely because other threads are faulting. On macOS CI a test thread was once refused for exactly that
-/// reason (`SignalsBlocked`) and the cause was not found; this keeps spawning threads while others fault and
-/// reports the first mask that has either signal blocked.
+/// `fault_signals_blocked` must be false for an ordinary new thread, whatever the other threads are doing.
+/// On macOS CI a test thread was once reported as blocking SIGSEGV/SIGBUS (when `Region::arm` still refused
+/// such threads) and the cause was never found; this keeps spawning threads while others fault, and reports
+/// the first start-up mask that has either signal blocked, so a recurrence is diagnosable.
 #[test]
 fn threads_spawned_while_others_fault_do_not_start_with_the_fault_signals_blocked() {
     let m = Arc::new(Mapped::new(8));
