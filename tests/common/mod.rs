@@ -115,62 +115,104 @@ pub fn errno_ptr() -> *mut libc::c_int {
 pub enum Outcome {
     /// The body returned and printed the success marker.
     Passed { output: String },
-    /// The process ended without the marker (killed by a signal, aborted, or a failed assertion).
-    Died { status: String, output: String },
+    /// The process ended without the marker: killed by a signal, aborted, or a failed assertion.
+    Died {
+        signal: Option<i32>,
+        code: Option<i32>,
+        output: String,
+    },
     /// It did not finish within the time limit and was killed.
     Hung { output: String },
+}
+
+impl Outcome {
+    pub fn output(&self) -> &str {
+        match self {
+            Outcome::Passed { output }
+            | Outcome::Died { output, .. }
+            | Outcome::Hung { output } => output,
+        }
+    }
+
+    /// Ended by the signal a fault raises (SIGSEGV 11, or SIGBUS: 7 on Linux, 10 on macOS and the BSDs).
+    pub fn died_by_fault(&self) -> bool {
+        matches!(
+            self,
+            Outcome::Died {
+                signal: Some(11 | 10 | 7),
+                ..
+            }
+        )
+    }
 }
 
 const MARKER: &str = "CASE-BODY-FINISHED";
 
 /// Run `body` in a child process (some cases must die, and the fault handler is process-global).
 ///
-/// `test_name` must be the name of the calling `#[test]` function. In the child (marked by an environment
-/// variable) this runs `body` and prints a marker; in the parent it re-runs this same test binary filtered to
-/// that one test and reports how the child ended.
-pub fn in_child(test_name: &str, limit: Duration, body: fn()) -> Option<Outcome> {
-    if std::env::var("DIRTY_RANGES_CHILD").as_deref() == Ok(test_name) {
-        body();
-        println!("{MARKER}");
+/// `test_name` is the calling `#[test]` function; `label` names this case within it (a test may run several).
+/// In the parent this re-runs the test binary filtered to that one test, with an environment variable naming
+/// the label, and reports how the child ended. In the child (the variable is set) it runs `body` only if
+/// `label` matches, prints a marker when `body` returns, and yields `None`, so the caller can tell it is the
+/// child and skip its assertions.
+pub fn in_child(
+    test_name: &str,
+    label: &str,
+    limit: Duration,
+    body: impl FnOnce(),
+) -> Option<Outcome> {
+    if let Ok(wanted) = std::env::var("DIRTY_RANGES_CHILD") {
+        if wanted == label {
+            body();
+            println!("{MARKER}");
+        }
         return None;
     }
     let exe = std::env::current_exe().unwrap();
     let mut child = Command::new(exe)
         .args(["--exact", test_name, "--nocapture", "--test-threads=1"])
-        .env("DIRTY_RANGES_CHILD", test_name)
+        .env("DIRTY_RANGES_CHILD", label)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
+    // Drain both pipes on threads so a chatty child cannot block on a full pipe while we poll.
+    let mut out = child.stdout.take().unwrap();
+    let mut err = child.stderr.take().unwrap();
+    let t_out = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = out.read_to_string(&mut s);
+        s
+    });
+    let t_err = std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = err.read_to_string(&mut s);
+        s
+    });
     let start = Instant::now();
-    let mut hung = false;
     let status = loop {
         if let Some(status) = child.try_wait().unwrap() {
             break Some(status);
         }
         if start.elapsed() > limit {
-            hung = true;
             let _ = child.kill();
             let _ = child.wait();
             break None;
         }
         std::thread::sleep(Duration::from_millis(20));
     };
-    let mut output = String::new();
-    if let Some(mut out) = child.stdout.take() {
-        let _ = out.read_to_string(&mut output);
-    }
-    if let Some(mut err) = child.stderr.take() {
-        let _ = err.read_to_string(&mut output);
-    }
-    Some(if hung {
-        Outcome::Hung { output }
-    } else if output.contains(MARKER) && status.is_some_and(|s| s.success()) {
-        Outcome::Passed { output }
-    } else {
-        Outcome::Died {
-            status: format!("{:?}", status),
-            output,
+    let mut output = t_out.join().unwrap();
+    output.push_str(&t_err.join().unwrap());
+    Some(match status {
+        None => Outcome::Hung { output },
+        Some(st) if output.contains(MARKER) && st.success() => Outcome::Passed { output },
+        Some(st) => {
+            use std::os::unix::process::ExitStatusExt;
+            Outcome::Died {
+                signal: st.signal(),
+                code: st.code(),
+                output,
+            }
         }
     })
 }

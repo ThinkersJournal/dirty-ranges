@@ -192,6 +192,7 @@ mod controls {
     fn errno_restore_control() {
         let outcome = in_child(
             "controls::errno_restore_control",
+            "controls::errno_restore_control",
             Duration::from_secs(60),
             || {
                 let m = Mapped::new(4);
@@ -224,6 +225,7 @@ mod controls {
     #[test]
     fn flush_without_reprotect_loses_updates_control() {
         let outcome = in_child(
+            "controls::flush_without_reprotect_loses_updates_control",
             "controls::flush_without_reprotect_loses_updates_control",
             Duration::from_secs(120),
             || {

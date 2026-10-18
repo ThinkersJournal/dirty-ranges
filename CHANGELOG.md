@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.7
+- Rest of the conformance suite: `tests/conformance_children.rs` (blocked-signal write is fatal, chaining with another handler installed before and after ours, stack overflow with the trap armed behaves as without it, failed `protect` in the handler kills the process) and `tests/conformance_alloc.rs` (allocator that faults in its own critical section, with a control showing an allocating handler deadlocks). Child-process cases run through `tests/common`.
+
 ## 0.0.6
 - Conformance suite (`tests/conformance.rs`), ported from the SDK lane's spike: page size and boundary-straddling ranges, pool exhaustion with scan fallback, stores racing the flush window, faults inside a libc `FILE` lock, `errno` preserved. Controls (compiled only with `--cfg dirty_ranges_conformance`) show the checks can fail: clobbered `errno`, and a flush that skips re-protecting. New CI job `conformance`.
 - `fault_signals_blocked()` (Unix): whether the calling thread blocks `SIGSEGV`/`SIGBUS`. A thread that blocks them must not write to a trapped region (the process is killed: fatal, never silent corruption); `Region::arm` does not check the arming thread (PM ruling 2026-10-18: the writers are what matter).
