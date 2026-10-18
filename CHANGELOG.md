@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.5
+- Unix page-fault trapping: `Region::arm` / `flush` / `armed_pages` / `page_size`, a process-wide `SIGSEGV`/`SIGBUS` handler with a lock-free multi-region registry (64 slots), `mprotect`, and double-buffered baselines. `PageState::abort_capture`. Linux glibc tested locally (Docker); macOS, FreeBSD, NetBSD only type-checked. Not yet: Windows, mode switching, `apply_remote`, the conformance cases in CI.
+
 ## 0.0.4
 - `Scanner`: scan mode over byte slices (baseline, coalesced changed ranges, `apply_remote` without echo). Safe code, no OS dependency. Mutation-tested (cargo-mutants 27.1.0, no exclusions): 55 mutants over range/diff/scan, all caught or non-terminating.
 
