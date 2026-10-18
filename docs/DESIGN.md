@@ -54,6 +54,21 @@ impl Region {
 Two views of one file: a protected view for user code and an RW alias for the SDK (the alias is how the
 owner's own writes avoid raising events).
 
+### Trap-conformance results (SDK lane harness, 2026-10-18, run 39144443214, GitHub hosted hardware)
+TESTED PASS: Linux x86_64 and aarch64 (glibc and musl), Windows x86_64 and arm64, FreeBSD (VM), macOS arm64
+(16 KiB pages) and x86_64. The one failing case was a Linux-shaped assertion (macOS kills with SIGKILL when
+SIGSEGV is blocked; still fatal) and is being fixed in the harness.
+UNVERIFIED: NetBSD, OpenBSD, Linux with 64 KiB pages, `vm.max_map_count` exhaustion, real JVM/Go/sanitizer
+handlers, 32-bit. The README table is the record; a platform is TESTED for *this crate* only once the crate
+passes the same cases in CI (the per-OS release gate).
+
+Design facts the harness proved (each becomes a requirement and a test):
+- The handler uses only atomics, `memcpy` and `mprotect`. A handler that allocates deadlocks (negative control).
+- The flush stall window allocates nothing and takes no locks.
+- `errno` / `GetLastError` must be saved and restored by the handler (the control without restore fails).
+- Use the runtime page size (macOS arm64 is 16 KiB).
+- Refuse to arm or flush from a thread that has SIGSEGV/SIGBUS blocked (such a fault is fatal).
+
 ## Concurrency (accepted for spike)
 Per-page atomic state: 0 clean, 1 copying, 2 dirty, 3 flushing.
 Handler: CAS 0→1, copy twin, unprotect, →2. Flush: CAS 2→3, re-protect, memcpy live→scratch, CAS 3→0, then diff
