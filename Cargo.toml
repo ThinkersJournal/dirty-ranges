@@ -1,6 +1,6 @@
 [package]
 name = "dirty-ranges"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2024"
 rust-version = "1.94"
 description = "Detect which byte ranges of a memory region changed between snapshots (name reserved; first release pending)."
@@ -9,6 +9,9 @@ repository = "https://github.com/ThinkersJournal/dirty-ranges"
 readme = "README.md"
 keywords = ["memory", "diff", "shared-memory", "change-detection"]
 categories = ["memory-management"]
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 proptest = "1.12"

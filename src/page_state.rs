@@ -2,6 +2,7 @@
 //!
 //! ```text
 //!   Clean --begin_capture--> Copying --finish_capture--> Dirty --begin_flush--> Flushing --finish_flush--> Clean
+//!   Copying --abort_capture--> Clean   (the handler could not unprotect the page)
 //! ```
 //!
 //! The handler owns the `Clean -> Copying -> Dirty` half and the flusher owns `Dirty -> Flushing -> Clean`.
@@ -65,6 +66,15 @@ impl PageState {
             .0
             .compare_exchange(COPYING, DIRTY, Ordering::Release, Ordering::Relaxed);
         assert!(r.is_ok(), "finish_capture on a page that was not Copying");
+    }
+
+    /// Handler: give the page back unchanged after a failed capture (for example `mprotect` failed).
+    /// Panics unless the page was `Copying`.
+    pub fn abort_capture(&self) {
+        let r = self
+            .0
+            .compare_exchange(COPYING, CLEAN, Ordering::Release, Ordering::Relaxed);
+        assert!(r.is_ok(), "abort_capture on a page that was not Copying");
     }
 
     /// Flusher: claim a dirty page. `false` if it is clean, still being copied, or already being flushed.
@@ -154,6 +164,21 @@ mod tests {
         p.finish_capture();
         assert!(p.begin_flush());
         assert!(!p.begin_flush());
+    }
+
+    #[test]
+    fn an_aborted_capture_returns_to_clean_and_can_be_retried() {
+        let p = PageState::new();
+        assert!(p.begin_capture());
+        p.abort_capture();
+        assert_eq!(p.load(), State::Clean);
+        assert!(p.begin_capture());
+    }
+
+    #[test]
+    #[should_panic(expected = "abort_capture")]
+    fn abort_capture_without_begin_panics() {
+        PageState::new().abort_capture();
     }
 
     #[test]
