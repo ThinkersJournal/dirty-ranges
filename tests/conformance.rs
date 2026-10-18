@@ -171,6 +171,59 @@ fn faults_inside_a_libc_file_lock_do_not_deadlock() {
     }
 }
 
+/// The signal mask of the calling thread as a bit set, one bit per signal number below 32.
+fn thread_mask_bits() -> u32 {
+    unsafe {
+        let mut current: libc::sigset_t = std::mem::zeroed();
+        assert_eq!(
+            libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current),
+            0
+        );
+        (1..32)
+            .filter(|&sig| libc::sigismember(&current, sig) == 1)
+            .fold(0u32, |bits, sig| bits | (1 << sig))
+    }
+}
+
+/// `Region::arm` refuses a thread that blocks SIGSEGV/SIGBUS, so a thread must never start with them blocked
+/// merely because other threads are faulting. On macOS CI a test thread was once refused for exactly that
+/// reason (`SignalsBlocked`) and the cause was not found; this keeps spawning threads while others fault and
+/// reports the first mask that has either signal blocked.
+#[test]
+fn threads_spawned_while_others_fault_do_not_start_with_the_fault_signals_blocked() {
+    let m = Arc::new(Mapped::new(8));
+    let mut region = m.arm(16);
+    let stop = Arc::new(AtomicBool::new(false));
+    let writers: Vec<_> = (0..3u64)
+        .map(|t| {
+            let (m, stop) = (m.clone(), stop.clone());
+            std::thread::spawn(move || {
+                let mut s = 0x1234_5678_9ABC_DEF1 ^ (t + 1);
+                while !stop.load(Ordering::Relaxed) {
+                    m.store((rnd(&mut s) as usize) % m.len, (rnd(&mut s) as u8) | 1);
+                }
+            })
+        })
+        .collect();
+    let mut bad = vec![];
+    for round in 0..300 {
+        region.flush(); // keep the pages re-protecting so the writers keep faulting
+        let probe = std::thread::spawn(thread_mask_bits).join().unwrap();
+        let segv_bus = (1u32 << libc::SIGSEGV) | (1u32 << libc::SIGBUS);
+        if probe & segv_bus != 0 {
+            bad.push((round, probe));
+        }
+    }
+    stop.store(true, Ordering::SeqCst);
+    for w in writers {
+        w.join().unwrap();
+    }
+    assert!(
+        bad.is_empty(),
+        "threads started with fault signals blocked (round, mask bits): {bad:x?}"
+    );
+}
+
 #[test]
 fn errno_is_preserved_across_a_fault() {
     let m = Mapped::new(4);
