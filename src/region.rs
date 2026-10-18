@@ -16,6 +16,9 @@ pub enum Error {
     Misaligned { page_size: usize },
     /// The process already tracks the maximum number of regions.
     RegistryFull,
+    /// The calling thread blocks `SIGSEGV`/`SIGBUS`. A write to a trapped page from such a thread is fatal
+    /// (the kernel kills the process), so refusing here is the safe answer.
+    SignalsBlocked,
     /// An operating-system call failed.
     Os(std::io::Error),
 }
@@ -32,6 +35,10 @@ impl core::fmt::Display for Error {
             Self::RegistryFull => write!(
                 f,
                 "the process already tracks the maximum number of regions"
+            ),
+            Self::SignalsBlocked => write!(
+                f,
+                "the calling thread blocks SIGSEGV/SIGBUS; a write to a trapped page from it would kill the process"
             ),
             Self::Os(e) => write!(f, "operating system error: {e}"),
         }
@@ -131,6 +138,11 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
     if addr < inner.base || addr >= inner.base + inner.armed * inner.page {
         return None;
     }
+    #[cfg(dirty_ranges_conformance)]
+    if crate::conformance_hooks::ALLOC_IN_HANDLER.load(Ordering::Relaxed) {
+        // CONTROL: break the "handler never allocates" rule on purpose.
+        std::hint::black_box(Box::new(7u8));
+    }
     let pi = (addr - inner.base) / inner.page;
     let state = &inner.state[pi];
     loop {
@@ -147,8 +159,14 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
                     };
                     inner.valid[pi].store(true, Ordering::Release);
                 }
+                #[cfg(dirty_ranges_conformance)]
+                let forced_failure = crate::conformance_hooks::FAIL_PROTECT.load(Ordering::Relaxed);
+                #[cfg(not(dirty_ranges_conformance))]
+                let forced_failure = false;
                 // SAFETY: a whole armed page of the caller's mapping.
-                if !unsafe { sys::protect(inner.live(pi) as usize, inner.page, true) } {
+                if forced_failure
+                    || !unsafe { sys::protect(inner.live(pi) as usize, inner.page, true) }
+                {
                     state.abort_capture();
                     return Some(Fault::Fatal);
                 }
@@ -183,6 +201,9 @@ impl Region {
     /// `ptr..ptr+len` must be a live mapping that stays valid until the `Region` is dropped, and nothing may
     /// read from the OS into it (`read`, `recv`) while armed: the kernel reports `EFAULT` instead of faulting.
     pub unsafe fn arm(ptr: *mut u8, len: usize, pool_pages: usize) -> Result<Region, Error> {
+        if sys::fault_signals_blocked() {
+            return Err(Error::SignalsBlocked);
+        }
         let page = sys::page_size();
         if !(ptr as usize).is_multiple_of(page) || !len.is_multiple_of(page) {
             return Err(Error::Misaligned { page_size: page });
@@ -254,6 +275,12 @@ impl Region {
             let mut j = i;
             while j + 1 < self.dirty.len() && self.dirty[j + 1] == self.dirty[j] + 1 {
                 j += 1;
+            }
+            #[cfg(dirty_ranges_conformance)]
+            if crate::conformance_hooks::SKIP_FLUSH_PROTECT.load(Ordering::Relaxed) {
+                // CONTROL: claim the pages but never re-protect them, so writers race the snapshot.
+                i = j + 1;
+                continue;
             }
             // SAFETY: whole armed pages of the caller's mapping.
             if !unsafe {
@@ -444,6 +471,43 @@ mod tests {
         let m = Map::new(1);
         let region = m.arm(2);
         assert_eq!(region.page_size(), m.page());
+    }
+
+    #[test]
+    fn arming_from_a_thread_that_blocks_the_fault_signals_is_refused() {
+        let m = std::sync::Arc::new(Map::new(2));
+        let m2 = m.clone();
+        let err = std::thread::spawn(move || {
+            let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+            unsafe {
+                libc::sigemptyset(&mut set);
+                libc::sigaddset(&mut set, libc::SIGSEGV);
+                libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+                Region::arm(m2.ptr, m2.len, 4).err()
+            }
+        })
+        .join()
+        .unwrap();
+        assert!(matches!(err, Some(Error::SignalsBlocked)));
+        // The block was one thread's: other threads still arm fine.
+        assert!(unsafe { Region::arm(m.ptr, m.len, 4) }.is_ok());
+    }
+
+    #[test]
+    fn arming_from_a_thread_that_blocks_sigbus_is_refused() {
+        let m = std::sync::Arc::new(Map::new(2));
+        let err = std::thread::spawn(move || {
+            let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+            unsafe {
+                libc::sigemptyset(&mut set);
+                libc::sigaddset(&mut set, libc::SIGBUS);
+                libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+                Region::arm(m.ptr, m.len, 4).err()
+            }
+        })
+        .join()
+        .unwrap();
+        assert!(matches!(err, Some(Error::SignalsBlocked)));
     }
 
     #[test]

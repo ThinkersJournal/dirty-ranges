@@ -24,6 +24,20 @@ static INSTALL: Once = Once::new();
 /// `0` if installation succeeded, otherwise the `errno` it failed with.
 static INSTALL_ERRNO: AtomicI32 = AtomicI32::new(0);
 
+/// Whether the calling thread blocks `SIGSEGV` or `SIGBUS`.
+pub(crate) fn fault_signals_blocked() -> bool {
+    // SAFETY: with a null `set`, `pthread_sigmask` only reads the calling thread's mask into `current`.
+    unsafe {
+        let mut current: libc::sigset_t = std::mem::zeroed();
+        if libc::pthread_sigmask(libc::SIG_BLOCK, std::ptr::null(), &mut current) != 0 {
+            return false;
+        }
+        SIGNALS
+            .iter()
+            .any(|&sig| libc::sigismember(&current, sig) == 1)
+    }
+}
+
 pub(crate) fn page_size() -> usize {
     // SAFETY: `sysconf` has no preconditions.
     unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }
@@ -138,7 +152,31 @@ unsafe extern "C" fn handler(sig: libc::c_int, info: *mut libc::siginfo_t, ctx: 
         let errno = errno_location();
         let saved = *errno;
         let outcome = on_fault(fault_address(info));
+        #[cfg(dirty_ranges_conformance)]
+        {
+            use crate::conformance_hooks::{CLOBBER_ERRNO, NO_ERRNO_RESTORE};
+            if CLOBBER_ERRNO.load(Ordering::Relaxed) {
+                // CONTROL: a handler that disturbs errno, to show the restore below is what protects it.
+                *errno = libc::EIO;
+            }
+            if NO_ERRNO_RESTORE.load(Ordering::Relaxed) {
+                return finish(outcome, sig, info, ctx);
+            }
+        }
         *errno = saved;
+        finish(outcome, sig, info, ctx)
+    }
+}
+
+/// What the handler does once the fault has been decided.
+unsafe fn finish(
+    outcome: Fault,
+    sig: libc::c_int,
+    info: *mut libc::siginfo_t,
+    ctx: *mut libc::c_void,
+) {
+    // SAFETY: async-signal context; only `write`, `signal` and the chained handler are called.
+    unsafe {
         match outcome {
             Fault::Resume => {}
             Fault::Fatal => {

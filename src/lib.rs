@@ -22,6 +22,25 @@ mod scan;
 )]
 mod sys;
 
+/// Test hooks for the conformance suite: switches that make the crate misbehave on purpose, so each
+/// conformance case can show it fails when the property it checks is broken. Compiled only with
+/// `RUSTFLAGS="--cfg dirty_ranges_conformance"`; never part of a normal build.
+#[cfg(all(unix, dirty_ranges_conformance))]
+#[doc(hidden)]
+pub mod conformance_hooks {
+    use std::sync::atomic::AtomicBool;
+    /// The handler allocates (breaks the no-allocation rule).
+    pub static ALLOC_IN_HANDLER: AtomicBool = AtomicBool::new(false);
+    /// The handler sets `errno` to `EIO` before returning.
+    pub static CLOBBER_ERRNO: AtomicBool = AtomicBool::new(false);
+    /// The handler does not restore `errno`.
+    pub static NO_ERRNO_RESTORE: AtomicBool = AtomicBool::new(false);
+    /// The handler's `mprotect` is reported as failed.
+    pub static FAIL_PROTECT: AtomicBool = AtomicBool::new(false);
+    /// `flush` skips re-protecting the pages it claimed.
+    pub static SKIP_FLUSH_PROTECT: AtomicBool = AtomicBool::new(false);
+}
+
 pub use diff::diff;
 pub use page_state::{PageState, State};
 pub use range::{Range, coalesce};

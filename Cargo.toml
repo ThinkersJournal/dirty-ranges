@@ -1,6 +1,6 @@
 [package]
 name = "dirty-ranges"
-version = "0.0.5"
+version = "0.0.6"
 edition = "2024"
 rust-version = "1.94"
 description = "Detect which byte ranges of a memory region changed between snapshots (name reserved; first release pending)."
@@ -15,9 +15,10 @@ libc = "0.2"
 
 [dev-dependencies]
 proptest = "1.12"
+memmap2 = "0.9"
 
 [target.'cfg(loom)'.dependencies]
 loom = "0.7"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)", "cfg(dirty_ranges_conformance)"] }
