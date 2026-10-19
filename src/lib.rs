@@ -8,14 +8,14 @@
 mod diff;
 mod page_state;
 mod range;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[expect(
     unsafe_code,
     reason = "page-fault trapping needs signal handlers and raw pointers; see docs/DESIGN.md"
 )]
 mod region;
 mod scan;
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 #[expect(
     unsafe_code,
     reason = "OS primitives: mprotect, signal handlers, raw pointers; see docs/DESIGN.md"
@@ -25,7 +25,7 @@ mod sys;
 /// Test hooks for the conformance suite: switches that make the crate misbehave on purpose, so each
 /// conformance case can show it fails when the property it checks is broken. Compiled only with
 /// `RUSTFLAGS="--cfg dirty_ranges_conformance"`; never part of a normal build.
-#[cfg(all(unix, dirty_ranges_conformance))]
+#[cfg(all(any(unix, windows), dirty_ranges_conformance))]
 #[doc(hidden)]
 pub mod conformance_hooks {
     use std::sync::atomic::AtomicBool;
@@ -47,4 +47,6 @@ pub use range::{Range, coalesce};
 pub use scan::{ScanError, Scanner};
 
 #[cfg(unix)]
-pub use region::{Error, Region, fault_signals_blocked};
+pub use region::fault_signals_blocked;
+#[cfg(any(unix, windows))]
+pub use region::{Error, Region};
