@@ -141,6 +141,26 @@ impl Inner {
         }
     }
 
+    /// Copy `len` live bytes starting at region offset `at` (inside page `page_index`) into the page's baseline,
+    /// if one has been captured. Reads the region; writes only the baseline.
+    ///
+    /// # Safety
+    /// `page_index < armed`; `at..at+len` lies within that page; the caller holds the page against the handler's
+    /// capture (state `Copying` held by it, or `Dirty`).
+    unsafe fn rebaseline_chunk(&self, page_index: usize, at: usize, len: usize) {
+        if self.valid[page_index].load(Ordering::Acquire) {
+            let cur = usize::from(self.current[page_index].load(Ordering::Acquire));
+            // SAFETY: by the caller's contract; the region is readable whether or not the page is protected.
+            unsafe {
+                ptr::copy_nonoverlapping(
+                    (self.base + at) as *const u8,
+                    self.buffer(page_index, cur).add(at % self.page),
+                    len,
+                );
+            }
+        }
+    }
+
     fn live(&self, page_index: usize) -> *mut u8 {
         (self.base + page_index * self.page) as *mut u8
     }
@@ -495,6 +515,62 @@ impl Region {
                 }
                 _ => {}
             }
+        }
+        Ok(())
+    }
+
+    /// Make the baseline of `offset..offset+len` match the bytes that are in the region now, so the next
+    /// [`Region::flush`] does not report them. Nothing is written to the region, with or without an alias.
+    ///
+    /// Use it when someone else has already put new bytes there (for example another process writing the
+    /// shared file) and you only want to stop them being reported as local writes. Unlike
+    /// [`Region::apply_remote`] it cannot overwrite a newer foreign write, because it writes no region bytes.
+    /// A local write in the range that has not been flushed yet is absorbed too, and not reported.
+    ///
+    /// Fails with [`Error::OutOfRegion`] if the range is not inside the region. Bytes in untracked pages have
+    /// no baseline, so there is nothing to do for them.
+    pub fn rebaseline(&mut self, offset: usize, len: usize) -> Result<(), Error> {
+        let inner = self.inner();
+        let out_of_region = || Error::OutOfRegion {
+            offset,
+            len,
+            region_len: inner.len,
+        };
+        let end = offset.checked_add(len).ok_or_else(out_of_region)?;
+        if end > inner.len {
+            return Err(out_of_region());
+        }
+        let page = inner.page;
+        let mut at = offset;
+        while at < end {
+            let p = at / page;
+            let stop = end.min((p + 1) * page);
+            if p >= inner.armed {
+                break; // the rest is untracked too
+            }
+            let state = &inner.state[p];
+            loop {
+                match state.load() {
+                    State::Clean => {
+                        // Hold the page against a capture that would race our copy.
+                        if !state.begin_capture() {
+                            continue;
+                        }
+                        // SAFETY: `p < armed`; we hold the page in `Copying`.
+                        unsafe { inner.rebaseline_chunk(p, at, stop - at) };
+                        state.abort_capture();
+                        break;
+                    }
+                    // A handler is capturing; `&mut self` rules out a flush.
+                    State::Copying | State::Flushing => std::hint::spin_loop(),
+                    State::Dirty => {
+                        // SAFETY: `p < armed`; the baseline was captured when the page went dirty.
+                        unsafe { inner.rebaseline_chunk(p, at, stop - at) };
+                        break;
+                    }
+                }
+            }
+            at = stop;
         }
         Ok(())
     }
@@ -866,6 +942,10 @@ mod tests {
         fn read(&self, offset: usize) -> u8 {
             unsafe { self.view.as_ptr().add(offset).read_volatile() }
         }
+        /// A write by "someone else": through the alias, so it never faults.
+        fn foreign_write(&self, offset: usize, v: u8) {
+            unsafe { self.alias.as_ptr().add(offset).cast_mut().write_volatile(v) };
+        }
     }
     impl Drop for Aliased {
         fn drop(&mut self) {
@@ -1104,5 +1184,104 @@ mod tests {
                 "thread {t}'s trapped-page write was lost"
             );
         }
+    }
+
+    #[test]
+    fn a_foreign_write_is_rebaselined_without_being_reported_or_touched() {
+        let mut m = Aliased::new(2);
+        let mut region = m.arm(4);
+        m.write(0, 1);
+        assert_eq!(region.flush(), vec![r(0, 1)]); // page 0 has a baseline
+        m.foreign_write(5, 42);
+        region.rebaseline(5, 1).unwrap();
+        assert_eq!(m.read(5), 42, "rebaseline must not write the region");
+        assert_eq!(region.flush(), vec![]);
+        m.write(5, 43); // a real local write after it is still seen
+        assert_eq!(region.flush(), vec![r(5, 1)]);
+    }
+
+    #[test]
+    fn rebaselining_a_page_with_no_baseline_yet_is_harmless() {
+        let mut m = Aliased::new(2);
+        let page = os_page();
+        let mut region = m.arm(4);
+        m.foreign_write(page + 3, 9);
+        region.rebaseline(page, page).unwrap();
+        assert_eq!(m.read(page + 3), 9);
+        assert_eq!(region.flush(), vec![]);
+        m.write(page + 4, 1);
+        assert_eq!(region.flush(), vec![r(page + 4, 1)]);
+    }
+
+    #[test]
+    fn rebaselining_a_dirty_page_absorbs_only_the_range_asked_for() {
+        let mut m = Aliased::new(1);
+        let mut region = m.arm(2);
+        m.write(0, 1);
+        m.write(100, 1); // page is Dirty
+        m.foreign_write(50, 7);
+        region.rebaseline(50, 1).unwrap();
+        assert_eq!(region.flush(), vec![r(0, 1), r(100, 1)]);
+        assert_eq!(m.read(50), 7);
+    }
+
+    #[test]
+    fn rebaseline_works_on_a_scanned_page_and_across_pages() {
+        let mut m = Aliased::new(3);
+        let page = os_page();
+        let mut region = m.arm(6);
+        region.set_mode(0..page, Mode::Scanned).unwrap();
+        m.foreign_write(page - 1, 3);
+        m.foreign_write(page, 4);
+        m.foreign_write(page * 2 - 1, 5);
+        region.rebaseline(page - 1, page + 1).unwrap();
+        assert_eq!(region.flush(), vec![]);
+        assert_eq!(
+            (m.read(page - 1), m.read(page), m.read(page * 2 - 1)),
+            (3, 4, 5)
+        );
+    }
+
+    #[test]
+    fn rebaseline_refuses_a_range_outside_the_region_and_ignores_untracked_pages() {
+        let mut m = Aliased::new(3);
+        let page = os_page();
+        let mut region = m.arm(2); // one tracked page
+        let len = m.view.len();
+        assert!(matches!(
+            region.rebaseline(len - 1, 2),
+            Err(Error::OutOfRegion { .. })
+        ));
+        assert!(region.rebaseline(usize::MAX, 2).is_err());
+        region.rebaseline(page - 2, page * 2).unwrap(); // reaches untracked pages: fine
+        region.rebaseline(0, 0).unwrap();
+    }
+
+    #[test]
+    fn rebaseline_never_overwrites_a_concurrent_foreign_write() {
+        let mut m = Aliased::new(2);
+        let page = os_page();
+        let mut region = m.arm(4);
+        m.write(0, 1);
+        region.flush(); // both pages: page 0 has a baseline, page 1 is clean
+        let m = std::sync::Arc::new(m);
+        let writer = {
+            let m = m.clone();
+            std::thread::spawn(move || {
+                for v in 1..=200u8 {
+                    m.foreign_write(8, v);
+                    m.foreign_write(page + 8, v);
+                }
+            })
+        };
+        while !writer.is_finished() {
+            region.rebaseline(0, page * 2).unwrap();
+        }
+        writer.join().unwrap();
+        // The region unprotects its pages when dropped, so it must go before the mapping does (`m` is
+        // declared later, so it would drop first): another test's mapping may reuse the address.
+        drop(region);
+        assert_eq!(m.read(8), 200, "a foreign write was lost");
+        assert_eq!(m.read(page + 8), 200, "a foreign write was lost");
     }
 }

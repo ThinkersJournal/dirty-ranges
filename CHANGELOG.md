@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.2
+- New `Region::rebaseline(offset, len)`: set the baseline of a range from the bytes that are in the region now, writing nothing to the region. For a write someone else already made (for example another process on the shared file) that must not be reported as local. `apply_remote` writes through the alias and can overwrite a newer foreign write; `rebaseline` cannot.
+
 ## 0.1.1
 - New `Mode { Trapped, Scanned }` and `Region::set_mode(range, mode)`: switch page-aligned parts of a region between trapped (read-only, first write faults) and scanned (writable, compared with the baseline at each flush) at runtime. Every page starts trapped. Writes made before a switch are still reported by the next flush. `PageState::abort_flush`.
 
