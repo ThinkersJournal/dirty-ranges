@@ -64,6 +64,17 @@ impl std::error::Error for Error {
     }
 }
 
+/// How a page-rounded part of a [`Region`] finds writes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    /// The pages are read-only; the first write to each faults and marks it dirty. Cheap to flush, costs a
+    /// fault per page per flush interval.
+    Trapped,
+    /// The pages are writable and never fault; each flush compares them with the baseline. No fault cost,
+    /// but every flush reads every scanned page.
+    Scanned,
+}
+
 /// What the fault handler decided about a fault.
 pub(crate) enum Fault {
     /// The page is now writable: re-execute the faulting instruction.
@@ -238,6 +249,12 @@ pub struct Region {
     slot: usize,
     /// Pages claimed by the current flush. Reserved at arm time so the flush's stall window never allocates.
     dirty: Vec<usize>,
+    /// Pages in [`Mode::Scanned`]. Only `&mut self` methods read or write it; the handler never does. A scanned
+    /// page is unprotected, has a captured baseline and sits in state `Dirty` for good, so a stale fault on it
+    /// just resumes.
+    scanned: Vec<bool>,
+    /// Changes found while switching pages back to trapped mode, reported by the next flush.
+    pending: Vec<Range>,
 }
 
 // SAFETY: all shared state is atomics; `flush` needs `&mut`, so one flusher at a time.
@@ -287,6 +304,8 @@ impl Region {
             inner,
             slot: usize::MAX,
             dirty: Vec::with_capacity(armed),
+            scanned: vec![false; armed],
+            pending: Vec::new(),
         };
         sys::install_handler().map_err(Error::Os)?;
         let slot = SLOTS
@@ -383,6 +402,103 @@ impl Region {
         Ok(())
     }
 
+    /// Switch the page-rounded bytes `range` between [`Mode::Trapped`] and [`Mode::Scanned`]. Every page
+    /// starts trapped.
+    ///
+    /// Nothing is lost across a switch: writes made before it are reported by the next flush. Switching to
+    /// trapped finds them by comparing the pages with their baseline once, so the next flush may report a
+    /// range that a later write has since changed back. Switching a page to the mode it is in does nothing.
+    ///
+    /// `range` must start and end on page boundaries ([`Error::Misaligned`]) and lie inside the tracked
+    /// pages ([`Error::OutOfRegion`], whose `region_len` is then the tracked length, [`Region::armed_pages`]
+    /// pages). If an operating-system call fails, the pages before the failing one have already switched.
+    pub fn set_mode(&mut self, range: core::ops::Range<usize>, mode: Mode) -> Result<(), Error> {
+        // SAFETY: allocated in `arm`, freed only in `Drop`; a separate borrow so `self.scanned` stays usable.
+        let inner = unsafe { &*self.inner };
+        let page = inner.page;
+        let tracked = inner.armed * page;
+        if !range.start.is_multiple_of(page) || !range.end.is_multiple_of(page) {
+            return Err(Error::Misaligned { page_size: page });
+        }
+        if range.start > range.end || range.end > tracked {
+            return Err(Error::OutOfRegion {
+                offset: range.start,
+                len: range.end.saturating_sub(range.start),
+                region_len: tracked,
+            });
+        }
+        for p in range.start / page..range.end / page {
+            match (self.scanned[p], mode) {
+                (false, Mode::Scanned) => {
+                    let state = &inner.state[p];
+                    loop {
+                        match state.load() {
+                            State::Clean => {
+                                if !state.begin_capture() {
+                                    continue;
+                                }
+                                if !inner.valid[p].load(Ordering::Acquire) {
+                                    let cur = usize::from(inner.current[p].load(Ordering::Acquire));
+                                    // SAFETY: `p < armed`; we hold the page in `Copying` and it is read-only.
+                                    unsafe {
+                                        ptr::copy_nonoverlapping(
+                                            inner.live(p),
+                                            inner.buffer(p, cur),
+                                            page,
+                                        )
+                                    };
+                                    inner.valid[p].store(true, Ordering::Release);
+                                }
+                                // SAFETY: a whole armed page of the caller's mapping.
+                                if !unsafe { sys::protect(inner.live(p) as usize, page, true) } {
+                                    let e = std::io::Error::last_os_error();
+                                    state.abort_capture();
+                                    return Err(Error::Os(e));
+                                }
+                                state.finish_capture();
+                                break;
+                            }
+                            // A handler is capturing; `&mut self` rules out a flush.
+                            State::Copying | State::Flushing => std::hint::spin_loop(),
+                            // Already writable, with a baseline.
+                            State::Dirty => break,
+                        }
+                    }
+                    self.scanned[p] = true;
+                }
+                (true, Mode::Trapped) => {
+                    let state = &inner.state[p];
+                    // A scanned page is `Dirty`; claiming it makes writers that fault wait.
+                    assert!(state.begin_flush(), "a scanned page is not Dirty");
+                    // SAFETY: a whole armed page of the caller's mapping.
+                    if !unsafe { sys::protect(inner.live(p) as usize, page, false) } {
+                        let e = std::io::Error::last_os_error();
+                        state.abort_flush();
+                        return Err(Error::Os(e));
+                    }
+                    self.scanned[p] = false;
+                    let cur = usize::from(inner.current[p].load(Ordering::Acquire));
+                    // SAFETY: `p < armed`; the page is read-only now, so the copy is a consistent snapshot.
+                    unsafe {
+                        ptr::copy_nonoverlapping(inner.live(p), inner.buffer(p, 1 - cur), page)
+                    };
+                    state.finish_flush();
+                    // SAFETY: two distinct page-sized buffers inside the pool; `&mut self` rules out a flush.
+                    let (old, new) = unsafe {
+                        (
+                            std::slice::from_raw_parts(inner.buffer(p, cur), page),
+                            std::slice::from_raw_parts(inner.buffer(p, 1 - cur), page),
+                        )
+                    };
+                    diff(old, new, p * page, &mut self.pending);
+                    inner.current[p].store((1 - cur) as u8, Ordering::Release);
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     /// Make every tracked page writable again and release the region, reporting whether the pages were
     /// unprotected. Dropping a `Region` does the same but cannot report a failure.
     pub fn disarm(self) -> Result<(), Error> {
@@ -404,14 +520,22 @@ impl Region {
         self.dirty.clear();
         // ---- stall window: writers that fault now spin until their page is released. No allocation, no lock.
         for p in 0..inner.armed {
-            if inner.state[p].begin_flush() {
+            // A scanned page is always claimed: it is compared like a dirty one, but never re-protected.
+            if self.scanned[p] || inner.state[p].begin_flush() {
                 self.dirty.push(p); // capacity was reserved in `arm`
             }
         }
         let mut i = 0;
         while i < self.dirty.len() {
+            if self.scanned[self.dirty[i]] {
+                i += 1;
+                continue;
+            }
             let mut j = i;
-            while j + 1 < self.dirty.len() && self.dirty[j + 1] == self.dirty[j] + 1 {
+            while j + 1 < self.dirty.len()
+                && self.dirty[j + 1] == self.dirty[j] + 1
+                && !self.scanned[self.dirty[j + 1]]
+            {
                 j += 1;
             }
             #[cfg(dirty_ranges_conformance)]
@@ -438,10 +562,12 @@ impl Region {
             let cur = usize::from(inner.current[p].load(Ordering::Acquire));
             // SAFETY: `p < armed`; the page is read-only now, so the copy is a consistent snapshot.
             unsafe { ptr::copy_nonoverlapping(inner.live(p), inner.buffer(p, 1 - cur), page) };
-            inner.state[p].finish_flush(); // writers may capture again; the page is protected with a valid baseline
+            if !self.scanned[p] {
+                inner.state[p].finish_flush(); // writers may capture again; the page is protected with a valid baseline
+            }
         }
         // ---- stall window over: allocating is fine from here.
-        let mut out = Vec::new();
+        let mut out = std::mem::take(&mut self.pending);
         for &p in &self.dirty {
             let cur = usize::from(inner.current[p].load(Ordering::Acquire));
             // SAFETY: two distinct page-sized buffers inside the pool; only this flusher reads them.
@@ -815,5 +941,168 @@ mod tests {
         region.disarm().unwrap();
         m.write(0, 1); // would fault into a dead region if the pages were still read-only
         assert_eq!(m.read(0), 1);
+    }
+
+    #[test]
+    fn a_scanned_page_reports_its_writes_once() {
+        let m = Map::new(2);
+        let page = m.page();
+        let mut region = m.arm(4);
+        region.set_mode(0..page, Mode::Scanned).unwrap();
+        m.write(10, 1);
+        m.write(11, 1);
+        assert_eq!(region.flush(), vec![r(10, 2)]);
+        assert_eq!(region.flush(), vec![]);
+        m.write(10, 2);
+        assert_eq!(region.flush(), vec![r(10, 1)]);
+    }
+
+    #[test]
+    fn a_scanned_page_ignores_a_store_of_the_value_already_there() {
+        let m = Map::new(1);
+        m.write(3, 5);
+        let mut region = m.arm(2);
+        region.set_mode(0..m.page(), Mode::Scanned).unwrap();
+        m.write(3, 5);
+        assert_eq!(region.flush(), vec![]);
+    }
+
+    #[test]
+    fn a_write_made_before_switching_to_scanned_is_still_reported() {
+        let m = Map::new(2);
+        let page = m.page();
+        let mut region = m.arm(4);
+        m.write(7, 1); // page 0 is Dirty
+        region.set_mode(0..page, Mode::Scanned).unwrap();
+        m.write(page + 7, 1); // page 1 stays trapped
+        assert_eq!(region.flush(), vec![r(7, 1), r(page + 7, 1)]);
+    }
+
+    #[test]
+    fn a_write_made_while_scanned_survives_the_switch_back_to_trapped() {
+        let m = Map::new(2);
+        let page = m.page();
+        let mut region = m.arm(4);
+        region.set_mode(0..page * 2, Mode::Scanned).unwrap();
+        m.write(5, 1);
+        region.set_mode(0..page * 2, Mode::Trapped).unwrap();
+        assert_eq!(region.flush(), vec![r(5, 1)]);
+        assert_eq!(region.flush(), vec![]);
+        m.write(6, 1); // trapped again: must fault, not slip by
+        assert_eq!(region.flush(), vec![r(6, 1)]);
+    }
+
+    #[test]
+    fn scanned_and_trapped_pages_side_by_side_coalesce_across_the_boundaries() {
+        let m = Map::new(4);
+        let page = m.page();
+        let mut region = m.arm(8);
+        region.set_mode(page..page * 2, Mode::Scanned).unwrap();
+        for at in [page - 1, page, page * 2 - 1, page * 2, page * 3] {
+            m.write(at, 1);
+        }
+        assert_eq!(
+            region.flush(),
+            vec![r(page - 1, 2), r(page * 2 - 1, 2), r(page * 3, 1)]
+        );
+        m.write(page * 2 + 1, 1);
+        m.write(page + 1, 1);
+        assert_eq!(region.flush(), vec![r(page + 1, 1), r(page * 2 + 1, 1)]);
+    }
+
+    #[test]
+    fn switching_to_the_mode_a_page_is_in_changes_nothing() {
+        let m = Map::new(2);
+        let page = m.page();
+        let mut region = m.arm(4);
+        region.set_mode(0..page * 2, Mode::Trapped).unwrap();
+        m.write(1, 1);
+        region.set_mode(page..page * 2, Mode::Scanned).unwrap();
+        region.set_mode(page..page * 2, Mode::Scanned).unwrap();
+        region.set_mode(0..0, Mode::Scanned).unwrap();
+        assert_eq!(region.flush(), vec![r(1, 1)]);
+    }
+
+    #[test]
+    fn set_mode_refuses_a_range_that_is_not_whole_pages() {
+        let m = Map::new(2);
+        let page = m.page();
+        let mut region = m.arm(4);
+        assert!(matches!(
+            region.set_mode(1..page, Mode::Scanned),
+            Err(Error::Misaligned { .. })
+        ));
+        assert!(matches!(
+            region.set_mode(0..page + 1, Mode::Scanned),
+            Err(Error::Misaligned { .. })
+        ));
+    }
+
+    #[test]
+    fn set_mode_refuses_pages_that_are_not_tracked_and_changes_nothing() {
+        let m = Map::new(4);
+        let page = m.page();
+        let mut region = m.arm(4); // two tracked pages
+        assert_eq!(region.armed_pages(), 2);
+        assert!(matches!(
+            region.set_mode(page..page * 3, Mode::Scanned),
+            Err(Error::OutOfRegion { region_len, .. }) if region_len == page * 2
+        ));
+        assert!(matches!(
+            region.set_mode(page * 2..page, Mode::Scanned),
+            Err(Error::OutOfRegion { .. })
+        ));
+        m.write(page + 1, 1); // page 1 is still trapped
+        assert_eq!(region.flush(), vec![r(page + 1, 1)]);
+    }
+
+    #[test]
+    fn a_remote_write_to_a_scanned_page_is_not_reported() {
+        let mut m = Aliased::new(2);
+        let page = os_page();
+        let mut region = m.arm(4);
+        region.set_mode(0..page, Mode::Scanned).unwrap();
+        m.write(0, 9);
+        region.apply_remote(8, &[4, 4]).unwrap();
+        assert_eq!(region.flush(), vec![r(0, 1)]);
+        assert_eq!(m.read(9), 4);
+    }
+
+    #[test]
+    fn a_scanned_page_can_be_written_from_many_threads_while_flushing() {
+        let m = std::sync::Arc::new(Map::new(2));
+        let page = m.page();
+        let mut region = m.arm(4);
+        region.set_mode(0..page, Mode::Scanned).unwrap();
+        let writers: Vec<_> = (0..4)
+            .map(|t| {
+                let m = m.clone();
+                std::thread::spawn(move || {
+                    for i in 0..200 {
+                        m.write(t * 16 + i % 16, 1 + (i % 200) as u8);
+                        m.write(page + t * 16, 1 + (i % 200) as u8);
+                    }
+                })
+            })
+            .collect();
+        let mut seen = vec![];
+        while writers.iter().any(|w| !w.is_finished()) {
+            seen.extend(region.flush());
+        }
+        for w in writers {
+            w.join().unwrap();
+        }
+        seen.extend(region.flush());
+        let mut touched = vec![false; page * 2];
+        for rg in &seen {
+            touched[rg.offset..rg.offset + rg.len].fill(true);
+        }
+        for t in 0..4 {
+            assert!(touched[t * 16], "thread {t}'s scanned-page write was lost");
+            assert!(
+                touched[page + t * 16],
+                "thread {t}'s trapped-page write was lost"
+            );
+        }
     }
 }
