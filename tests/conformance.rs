@@ -1,7 +1,7 @@
 //! Trap-conformance cases, ported from the SDK lane's spike (`spike/trap-conformance`, PR #3) to run against
 //! the real crate. Cases that need a misbehaving crate to prove they can fail (the "controls") need
 //! `RUSTFLAGS="--cfg dirty_ranges_conformance"`; the rest run in a normal `cargo test`.
-#![cfg(unix)]
+#![cfg(any(unix, windows))]
 
 mod common;
 
@@ -126,6 +126,7 @@ fn stores_racing_the_flush_window_are_never_lost() {
     assert!(flushes > 60, "only {flushes} flushes raced the writers");
 }
 
+#[cfg(unix)]
 #[test]
 fn faults_inside_a_libc_file_lock_do_not_deadlock() {
     let m = Arc::new(Mapped::new(16));
@@ -172,6 +173,7 @@ fn faults_inside_a_libc_file_lock_do_not_deadlock() {
 }
 
 /// The signal mask of the calling thread as a bit set, one bit per signal number below 32.
+#[cfg(unix)]
 fn thread_mask_bits() -> u32 {
     unsafe {
         let mut current: libc::sigset_t = std::mem::zeroed();
@@ -189,6 +191,7 @@ fn thread_mask_bits() -> u32 {
 /// On macOS CI a test thread was once reported as blocking SIGSEGV/SIGBUS (when `Region::arm` still refused
 /// such threads) and the cause was never found; this keeps spawning threads while others fault, and reports
 /// the first start-up mask that has either signal blocked, so a recurrence is diagnosable.
+#[cfg(unix)]
 #[test]
 fn threads_spawned_while_others_fault_do_not_start_with_the_fault_signals_blocked() {
     let m = Arc::new(Mapped::new(8));
@@ -228,9 +231,9 @@ fn threads_spawned_while_others_fault_do_not_start_with_the_fault_signals_blocke
 fn errno_is_preserved_across_a_fault() {
     let m = Mapped::new(4);
     let mut region = m.arm(16);
-    unsafe { *errno_ptr() = 777 };
+    set_os_error(777);
     m.store(0, 1);
-    assert_eq!(unsafe { *errno_ptr() }, 777, "a plain fault changed errno");
+    assert_eq!(get_os_error(), 777, "a plain fault changed errno");
     assert_eq!(region.flush(), vec![r(0, 1)]);
 }
 
@@ -251,21 +254,19 @@ mod controls {
                 let m = Mapped::new(4);
                 let page = m.page;
                 let _region = m.arm(16);
-                unsafe {
-                    CLOBBER_ERRNO.store(true, Ordering::SeqCst);
-                    *errno_ptr() = 777;
-                    m.store(0, 1);
-                    let kept = *errno_ptr();
-                    NO_ERRNO_RESTORE.store(true, Ordering::SeqCst);
-                    *errno_ptr() = 777;
-                    m.store(page, 1);
-                    let lost = *errno_ptr();
-                    assert_eq!(kept, 777, "restore failed with a clobbering handler");
-                    assert_ne!(
-                        lost, 777,
-                        "control: without the restore errno should be clobbered"
-                    );
-                }
+                CLOBBER_ERRNO.store(true, Ordering::SeqCst);
+                set_os_error(777);
+                m.store(0, 1);
+                let kept = get_os_error();
+                NO_ERRNO_RESTORE.store(true, Ordering::SeqCst);
+                set_os_error(777);
+                m.store(page, 1);
+                let lost = get_os_error();
+                assert_eq!(kept, 777, "restore failed with a clobbering handler");
+                assert_ne!(
+                    lost, 777,
+                    "control: without the restore errno should be clobbered"
+                );
             },
         );
         if let Some(o) = outcome {

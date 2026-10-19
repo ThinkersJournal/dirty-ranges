@@ -181,6 +181,7 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
 /// never silent corruption, and it is tested (`a_write_from_a_thread_that_blocks_the_fault_signals_is_fatal`).
 /// `Region::arm` does not look at the arming thread's mask, because the threads that matter are the writers,
 /// which it cannot see: call this on a thread you are about to let write if its mask is not under your control.
+#[cfg(unix)]
 pub fn fault_signals_blocked() -> bool {
     let (segv, bus) = sys::blocked_fault_signals();
     segv || bus
@@ -189,7 +190,7 @@ pub fn fault_signals_blocked() -> bool {
 /// A memory region whose writes are trapped page by page.
 ///
 /// Every thread that writes to the region must leave `SIGSEGV` and `SIGBUS` unblocked; see
-/// [`fault_signals_blocked`].
+/// `fault_signals_blocked` (Unix).
 pub struct Region {
     inner: *mut Inner,
     slot: usize,
@@ -345,12 +346,13 @@ impl Drop for Region {
     }
 }
 
-#[cfg(all(test, unix))]
+#[cfg(all(test, any(unix, windows)))]
 mod tests {
     use super::*;
 
     /// An anonymous mapping standing in for a mapped file.
     struct Map {
+        _map: memmap2::MmapMut,
         ptr: *mut u8,
         len: usize,
     }
@@ -358,25 +360,17 @@ mod tests {
     unsafe impl Sync for Map {}
 
     fn os_page() -> usize {
-        unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }
+        sys::page_size()
     }
 
     impl Map {
         fn new(pages: usize) -> Map {
             let len = pages * os_page();
-            let ptr = unsafe {
-                libc::mmap(
-                    std::ptr::null_mut(),
-                    len,
-                    libc::PROT_READ | libc::PROT_WRITE,
-                    libc::MAP_PRIVATE | libc::MAP_ANON,
-                    -1,
-                    0,
-                )
-            };
-            assert_ne!(ptr, libc::MAP_FAILED);
+            let mut map = memmap2::MmapMut::map_anon(len).unwrap();
+            let ptr = map.as_mut_ptr();
             Map {
-                ptr: ptr as *mut u8,
+                _map: map,
+                ptr,
                 len,
             }
         }
@@ -394,12 +388,6 @@ mod tests {
             unsafe { Region::arm(self.ptr, self.len, pool_pages) }.unwrap()
         }
     }
-    impl Drop for Map {
-        fn drop(&mut self) {
-            unsafe { libc::munmap(self.ptr as *mut _, self.len) };
-        }
-    }
-
     fn r(offset: usize, len: usize) -> Range {
         Range { offset, len }
     }
@@ -478,6 +466,7 @@ mod tests {
         assert_eq!(region.page_size(), m.page());
     }
 
+    #[cfg(unix)]
     fn on_a_thread_that_blocks(sig: libc::c_int, f: impl FnOnce() + Send + 'static) {
         std::thread::spawn(move || {
             let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
@@ -492,6 +481,7 @@ mod tests {
         .unwrap();
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_query_reports_whether_this_thread_blocks_the_fault_signals() {
         assert!(!fault_signals_blocked());
@@ -502,6 +492,7 @@ mod tests {
 
     /// Arming does not look at the arming thread's mask: what is fatal is a *writer* thread that blocks the
     /// signals, and `arm` cannot see the writers. Callers query `fault_signals_blocked` where they care.
+    #[cfg(unix)]
     #[test]
     fn arming_does_not_depend_on_the_arming_threads_signal_mask() {
         let m = std::sync::Arc::new(Map::new(2));

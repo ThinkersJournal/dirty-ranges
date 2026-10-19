@@ -1,6 +1,6 @@
 [package]
 name = "dirty-ranges"
-version = "0.0.7"
+version = "0.0.8"
 edition = "2024"
 rust-version = "1.94"
 description = "Detect which byte ranges of a memory region changed between snapshots (name reserved; first release pending)."
@@ -12,6 +12,15 @@ categories = ["memory-management"]
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Kernel",
+  "Win32_System_Memory",
+  "Win32_System_SystemInformation",
+] }
 
 [dev-dependencies]
 proptest = "1.12"

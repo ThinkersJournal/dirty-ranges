@@ -1,5 +1,5 @@
 //! Shared helpers for the conformance suite (ported from the SDK lane's trap-conformance spike).
-#![cfg(unix)]
+#![cfg(any(unix, windows))]
 #![allow(dead_code)]
 
 use dirty_ranges::{Range, Region};
@@ -12,12 +12,22 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 pub fn page_size() -> usize {
-    unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }
+    #[cfg(unix)]
+    unsafe {
+        libc::sysconf(libc::_SC_PAGESIZE) as usize
+    }
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::SystemInformation::{GetSystemInfo, SYSTEM_INFO};
+        let mut info: SYSTEM_INFO = std::mem::zeroed();
+        GetSystemInfo(&mut info);
+        info.dwPageSize as usize
+    }
 }
 
 /// A file-backed shared mapping, the shape the crate exists for.
 pub struct Mapped {
-    _map: MmapMut,
+    map: Option<MmapMut>,
     path: PathBuf,
     pub base: *mut u8,
     pub len: usize,
@@ -49,7 +59,7 @@ impl Mapped {
         let mut map = unsafe { MmapMut::map_mut(&file).unwrap() };
         let base = map.as_mut_ptr();
         Mapped {
-            _map: map,
+            map: Some(map),
             path,
             base,
             len,
@@ -73,6 +83,8 @@ impl Mapped {
 
 impl Drop for Mapped {
     fn drop(&mut self) {
+        // Windows cannot delete a file while it is mapped, so unmap first.
+        drop(self.map.take());
         let _ = std::fs::remove_file(&self.path);
     }
 }
@@ -92,7 +104,31 @@ pub fn rnd(state: &mut u64) -> u64 {
     *state
 }
 
-pub fn errno_ptr() -> *mut libc::c_int {
+/// The calling thread's last OS error (`errno`, or `GetLastError` on Windows).
+pub fn get_os_error() -> i32 {
+    #[cfg(unix)]
+    unsafe {
+        *errno_ptr()
+    }
+    #[cfg(windows)]
+    unsafe {
+        windows_sys::Win32::Foundation::GetLastError() as i32
+    }
+}
+
+pub fn set_os_error(value: i32) {
+    #[cfg(unix)]
+    unsafe {
+        *errno_ptr() = value
+    }
+    #[cfg(windows)]
+    unsafe {
+        windows_sys::Win32::Foundation::SetLastError(value as u32)
+    }
+}
+
+#[cfg(unix)]
+fn errno_ptr() -> *mut libc::c_int {
     unsafe {
         #[cfg(target_os = "linux")]
         return libc::__errno_location();
@@ -134,15 +170,19 @@ impl Outcome {
         }
     }
 
-    /// Ended by the signal a fault raises (SIGSEGV 11, or SIGBUS: 7 on Linux, 10 on macOS and the BSDs).
+    /// Ended by the fault itself: the signal a fault raises on Unix (SIGSEGV 11, or SIGBUS: 7 on Linux, 10 on
+    /// macOS and the BSDs), or the access-violation exit code on Windows.
     pub fn died_by_fault(&self) -> bool {
-        matches!(
+        #[cfg(unix)]
+        return matches!(
             self,
             Outcome::Died {
                 signal: Some(11 | 10 | 7),
                 ..
             }
-        )
+        );
+        #[cfg(windows)]
+        return matches!(self, Outcome::Died { code: Some(c), .. } if *c as u32 == 0xC000_0005);
     }
 }
 
@@ -207,9 +247,12 @@ pub fn in_child(
         None => Outcome::Hung { output },
         Some(st) if output.contains(MARKER) && st.success() => Outcome::Passed { output },
         Some(st) => {
-            use std::os::unix::process::ExitStatusExt;
+            #[cfg(unix)]
+            let signal = std::os::unix::process::ExitStatusExt::signal(&st);
+            #[cfg(windows)]
+            let signal = None;
             Outcome::Died {
-                signal: st.signal(),
+                signal,
                 code: st.code(),
                 output,
             }

@@ -1,13 +1,15 @@
 //! Conformance cases that must run in their own process: they end in a signal, install other fault handlers,
 //! or overflow the stack. Ported from the SDK lane's spike (`spike/trap-conformance`, PR #3).
-#![cfg(unix)]
+#![cfg(any(unix, windows))]
 
 mod common;
 
 use common::*;
 use dirty_ranges::Range;
+#[cfg(unix)]
 use std::cell::UnsafeCell;
 use std::io::Write as _;
+#[cfg(unix)]
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -15,6 +17,7 @@ use std::time::Duration;
 
 const LIMIT: Duration = Duration::from_secs(90);
 
+#[cfg(unix)]
 fn block_fault_signals() {
     unsafe {
         let mut set: libc::sigset_t = std::mem::zeroed();
@@ -27,6 +30,7 @@ fn block_fault_signals() {
 
 /// A store with SIGSEGV/SIGBUS blocked cannot be handled: the kernel kills the process (Linux with SIGSEGV,
 /// macOS with SIGKILL). That is why `Region::arm` refuses such a thread, and why the docs say so.
+#[cfg(unix)]
 #[test]
 fn a_write_from_a_thread_that_blocks_the_fault_signals_is_fatal() {
     let name = "a_write_from_a_thread_that_blocks_the_fault_signals_is_fatal";
@@ -68,9 +72,12 @@ fn a_write_from_a_thread_that_blocks_the_fault_signals_is_fatal() {
 static OTHER_BASE: AtomicUsize = AtomicUsize::new(0);
 static OTHER_HITS: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(unix)]
 struct Previous(UnsafeCell<[MaybeUninit<libc::sigaction>; 2]>);
 // SAFETY: written once by `install_other_handler` before the handler can run, read-only after.
+#[cfg(unix)]
 unsafe impl Sync for Previous {}
+#[cfg(unix)]
 static OTHER_PREVIOUS: Previous = Previous(UnsafeCell::new([
     MaybeUninit::uninit(),
     MaybeUninit::uninit(),
@@ -80,13 +87,14 @@ static OTHER_PREVIOUS: Previous = Previous(UnsafeCell::new([
 unsafe fn fault_address(info: *mut libc::siginfo_t) -> usize {
     unsafe { (*info).si_addr() as usize }
 }
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "android"))))]
 unsafe fn fault_address(info: *mut libc::siginfo_t) -> usize {
     unsafe { (*info).si_addr as usize }
 }
 
 /// A stand-in for another runtime's handler (a JVM, a sanitizer): it handles faults in its own page and
 /// passes everything else to whoever was installed before it.
+#[cfg(unix)]
 unsafe extern "C" fn other_handler(
     sig: libc::c_int,
     info: *mut libc::siginfo_t,
@@ -122,6 +130,7 @@ unsafe extern "C" fn other_handler(
     }
 }
 
+#[cfg(unix)]
 fn install_other_handler() {
     unsafe {
         let previous = OTHER_PREVIOUS
@@ -141,6 +150,7 @@ fn install_other_handler() {
     }
 }
 
+#[cfg(unix)]
 fn other_page() {
     unsafe {
         let p = libc::mmap(
@@ -152,6 +162,59 @@ fn other_page() {
             0,
         );
         assert_ne!(p, libc::MAP_FAILED);
+        OTHER_BASE.store(p as usize, Ordering::Release);
+    }
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn other_veh(
+    info: *mut windows_sys::Win32::System::Diagnostics::Debug::EXCEPTION_POINTERS,
+) -> i32 {
+    use windows_sys::Win32::System::Memory::{PAGE_READWRITE, VirtualProtect};
+    unsafe {
+        let record = (*info).ExceptionRecord;
+        if (*record).ExceptionCode != 0xC000_0005_u32 as i32 {
+            return 0;
+        }
+        let addr = (*record).ExceptionInformation[1];
+        let base = OTHER_BASE.load(Ordering::Acquire);
+        let page = page_size();
+        if addr >= base && addr < base + page {
+            let mut old = 0;
+            VirtualProtect(base as *const _, page, PAGE_READWRITE, &mut old);
+            OTHER_HITS.fetch_add(1, Ordering::SeqCst);
+            return -1;
+        }
+        let _ = std::io::stdout().write_all(
+            b"OTHER-SAW-UNRELATED
+",
+        );
+        let _ = std::io::stdout().flush();
+        0
+    }
+}
+
+#[cfg(windows)]
+fn install_other_handler() {
+    use windows_sys::Win32::System::Diagnostics::Debug::AddVectoredExceptionHandler;
+    unsafe {
+        assert!(!AddVectoredExceptionHandler(1, Some(other_veh)).is_null());
+    }
+}
+
+#[cfg(windows)]
+fn other_page() {
+    use windows_sys::Win32::System::Memory::{
+        MEM_COMMIT, MEM_RESERVE, PAGE_NOACCESS, VirtualAlloc,
+    };
+    unsafe {
+        let p = VirtualAlloc(
+            std::ptr::null(),
+            page_size(),
+            MEM_COMMIT | MEM_RESERVE,
+            PAGE_NOACCESS,
+        );
+        assert!(!p.is_null());
         OTHER_BASE.store(p as usize, Ordering::Release);
     }
 }
