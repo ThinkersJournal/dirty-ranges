@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.9
+- `SECURITY.md`: private reporting via GitHub, RustSec filing for soundness bugs, credit policy.
+
 ## 0.0.8
 - Windows page-fault trapping: `Region` now works on Windows (`VirtualProtect` plus a vectored exception handler that saves and restores the last error and chains unrelated exceptions). The conformance suite runs on Windows too (including its controls, the VEH chaining cases and the stack-overflow cases); the Unix-only cases (libc `FILE` lock, blocked-signal write, signal-mask probe) stay Unix-only. New CI check `conformance controls (windows-latest)`.
 
