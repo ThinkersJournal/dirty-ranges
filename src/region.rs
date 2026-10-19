@@ -16,6 +16,14 @@ pub enum Error {
     Misaligned { page_size: usize },
     /// The process already tracks the maximum number of regions.
     RegistryFull,
+    /// `apply_remote` needs the writable alias, and the region was armed without one.
+    NoAlias,
+    /// `offset..offset+len` is not inside the region.
+    OutOfRegion {
+        offset: usize,
+        len: usize,
+        region_len: usize,
+    },
     /// An operating-system call failed.
     Os(std::io::Error),
 }
@@ -32,6 +40,15 @@ impl core::fmt::Display for Error {
             Self::RegistryFull => write!(
                 f,
                 "the process already tracks the maximum number of regions"
+            ),
+            Self::NoAlias => write!(f, "the region was armed without a writable alias"),
+            Self::OutOfRegion {
+                offset,
+                len,
+                region_len,
+            } => write!(
+                f,
+                "{len} bytes at offset {offset} are outside the {region_len}-byte region"
             ),
             Self::Os(e) => write!(f, "operating system error: {e}"),
         }
@@ -68,6 +85,10 @@ static ACTIVE: [AtomicUsize; MAX_REGIONS] = [const { AtomicUsize::new(0) }; MAX_
 /// Everything the handler touches. Never moved or freed while registered in `SLOTS`.
 struct Inner {
     base: usize,
+    /// Length of the whole region, tracked or not.
+    len: usize,
+    /// Start of the caller's writable alias of the region, or 0 if there is none.
+    alias: usize,
     page: usize,
     armed: usize,
     state: Box<[PageState]>,
@@ -86,6 +107,27 @@ impl Inner {
     unsafe fn buffer(&self, page_index: usize, which: usize) -> *mut u8 {
         // SAFETY: in bounds of the `armed * 2 * page` pool by the caller's contract.
         unsafe { self.pool.add((page_index * 2 + which) * self.page) }
+    }
+
+    /// Write `chunk` (which starts at region offset `at`, inside page `page_index`) through the alias, and
+    /// into the page's baseline if one has been captured.
+    ///
+    /// # Safety
+    /// `page_index < armed`; `chunk` lies within that page and the region; the alias is set and writable; the
+    /// caller holds the page against the handler's capture (state `Copying` held by it, or `Dirty`).
+    unsafe fn write_through(&self, page_index: usize, at: usize, chunk: &[u8]) {
+        // SAFETY: by the caller's contract.
+        unsafe {
+            ptr::copy_nonoverlapping(chunk.as_ptr(), (self.alias + at) as *mut u8, chunk.len());
+            if self.valid[page_index].load(Ordering::Acquire) {
+                let cur = usize::from(self.current[page_index].load(Ordering::Acquire));
+                ptr::copy_nonoverlapping(
+                    chunk.as_ptr(),
+                    self.buffer(page_index, cur).add(at % self.page),
+                    chunk.len(),
+                );
+            }
+        }
     }
 
     fn live(&self, page_index: usize) -> *mut u8 {
@@ -206,10 +248,21 @@ impl Region {
     /// Arm `len` bytes at `ptr`, tracking up to `pool_pages / 2` pages (two baseline buffers per page).
     /// Pages beyond that stay writable and untracked; the caller must scan them (see [`Region::armed_pages`]).
     ///
+    /// `alias` is a second, writable mapping of the same memory (a different virtual address range over the
+    /// same pages). [`Region::apply_remote`] writes through it, because the region itself is read-only
+    /// between faults. Without one, `apply_remote` fails with [`Error::NoAlias`].
+    ///
     /// # Safety
     /// `ptr..ptr+len` must be a live mapping that stays valid until the `Region` is dropped, and nothing may
     /// read from the OS into it (`read`, `recv`) while armed: the kernel reports `EFAULT` instead of faulting.
-    pub unsafe fn arm(ptr: *mut u8, len: usize, pool_pages: usize) -> Result<Region, Error> {
+    /// If given, `alias..alias+len` must be a live, writable mapping of the same bytes as `ptr..ptr+len`,
+    /// valid for as long as the `Region` lives.
+    pub unsafe fn arm(
+        ptr: *mut u8,
+        len: usize,
+        pool_pages: usize,
+        alias: Option<*mut u8>,
+    ) -> Result<Region, Error> {
         let page = sys::page_size();
         if !(ptr as usize).is_multiple_of(page) || !len.is_multiple_of(page) {
             return Err(Error::Misaligned { page_size: page });
@@ -219,6 +272,8 @@ impl Region {
         let pool = Box::into_raw(vec![0u8; pool_len].into_boxed_slice()).cast::<u8>();
         let inner = Box::into_raw(Box::new(Inner {
             base: ptr as usize,
+            len,
+            alias: alias.map_or(0, |a| a as usize),
             page,
             armed,
             state: (0..armed).map(|_| PageState::new()).collect(),
@@ -262,6 +317,83 @@ impl Region {
     /// The OS page size the region was armed with.
     pub fn page_size(&self) -> usize {
         self.inner().page
+    }
+
+    /// Record that `bytes` were written at `offset` by someone else (for example a remote peer): write them
+    /// through the alias and into the baseline, so the next [`Region::flush`] does not report them.
+    ///
+    /// Nothing is written if the range is not inside the region. If the local side wrote the very same bytes
+    /// at the same moment, the remote value wins and the local write goes unreported; that is a conflict the
+    /// caller resolves, not one this crate can see.
+    pub fn apply_remote(&mut self, offset: usize, bytes: &[u8]) -> Result<(), Error> {
+        let inner = self.inner();
+        if inner.alias == 0 {
+            return Err(Error::NoAlias);
+        }
+        let out_of_region = || Error::OutOfRegion {
+            offset,
+            len: bytes.len(),
+            region_len: inner.len,
+        };
+        let end = offset.checked_add(bytes.len()).ok_or_else(out_of_region)?;
+        if end > inner.len {
+            return Err(out_of_region());
+        }
+        let page = inner.page;
+        let mut at = offset;
+        while at < end {
+            let p = at / page;
+            let stop = end.min((p + 1) * page);
+            let chunk = &bytes[at - offset..stop - offset];
+            if p >= inner.armed {
+                // SAFETY: inside the region, and the alias is writable by `arm`'s contract.
+                unsafe {
+                    ptr::copy_nonoverlapping(
+                        chunk.as_ptr(),
+                        (inner.alias + at) as *mut u8,
+                        chunk.len(),
+                    )
+                };
+            } else {
+                let state = &inner.state[p];
+                loop {
+                    match state.load() {
+                        State::Clean => {
+                            // Hold the page against a capture that would copy half of our write.
+                            if !state.begin_capture() {
+                                continue;
+                            }
+                            // SAFETY: `p < armed`; we hold the page in `Copying`.
+                            unsafe { inner.write_through(p, at, chunk) };
+                            state.abort_capture();
+                            break;
+                        }
+                        // A handler is capturing; `&mut self` rules out a flush.
+                        State::Copying | State::Flushing => std::hint::spin_loop(),
+                        State::Dirty => {
+                            // SAFETY: `p < armed`; the baseline was captured when the page went dirty.
+                            unsafe { inner.write_through(p, at, chunk) };
+                            break;
+                        }
+                    }
+                }
+            }
+            at = stop;
+        }
+        Ok(())
+    }
+
+    /// Make every tracked page writable again and release the region, reporting whether the pages were
+    /// unprotected. Dropping a `Region` does the same but cannot report a failure.
+    pub fn disarm(self) -> Result<(), Error> {
+        let inner = self.inner();
+        if inner.armed > 0 {
+            // SAFETY: the caller's mapping outlives the region by `arm`'s contract.
+            if !unsafe { sys::protect(inner.base, inner.armed * inner.page, true) } {
+                return Err(Error::Os(std::io::Error::last_os_error()));
+            }
+        }
+        Ok(())
     }
 
     /// Report the byte ranges written since the last flush (sorted, coalesced, byte-exact) and re-arm.
@@ -385,7 +517,7 @@ mod tests {
             unsafe { self.ptr.add(offset).read_volatile() }
         }
         fn arm(&self, pool_pages: usize) -> Region {
-            unsafe { Region::arm(self.ptr, self.len, pool_pages) }.unwrap()
+            unsafe { Region::arm(self.ptr, self.len, pool_pages, None) }.unwrap()
         }
     }
     fn r(offset: usize, len: usize) -> Range {
@@ -498,14 +630,14 @@ mod tests {
         let m = std::sync::Arc::new(Map::new(2));
         let m2 = m.clone();
         on_a_thread_that_blocks(libc::SIGSEGV, move || {
-            assert!(unsafe { Region::arm(m2.ptr, m2.len, 4) }.is_ok());
+            assert!(unsafe { Region::arm(m2.ptr, m2.len, 4, None) }.is_ok());
         });
     }
 
     #[test]
     fn a_misaligned_pointer_is_refused() {
         let m = Map::new(2);
-        let e = unsafe { Region::arm(m.ptr.add(1), m.page(), 4) }
+        let e = unsafe { Region::arm(m.ptr.add(1), m.page(), 4, None) }
             .err()
             .unwrap();
         assert!(matches!(e, Error::Misaligned { .. }));
@@ -514,7 +646,7 @@ mod tests {
     #[test]
     fn a_length_that_is_not_whole_pages_is_refused() {
         let m = Map::new(2);
-        let e = unsafe { Region::arm(m.ptr, m.page() + 1, 4) }
+        let e = unsafe { Region::arm(m.ptr, m.page() + 1, 4, None) }
             .err()
             .unwrap();
         assert!(matches!(e, Error::Misaligned { .. }));
@@ -569,5 +701,119 @@ mod tests {
         }
         let want: Vec<Range> = (0..16).map(|t| r(t * page + 7, 1)).collect();
         assert_eq!(region.flush(), want);
+    }
+
+    /// One file mapped twice, so the second mapping is a true writable alias of the first.
+    struct Aliased {
+        view: memmap2::MmapMut,
+        alias: memmap2::MmapMut,
+        path: std::path::PathBuf,
+    }
+    impl Aliased {
+        fn new(pages: usize) -> Aliased {
+            static N: AtomicUsize = AtomicUsize::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "dirty-ranges-alias-{}-{}",
+                std::process::id(),
+                N.fetch_add(1, Ordering::Relaxed)
+            ));
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .unwrap();
+            file.set_len((pages * os_page()) as u64).unwrap();
+            // SAFETY: a private temp file nothing else touches.
+            let view = unsafe { memmap2::MmapMut::map_mut(&file) }.unwrap();
+            let alias = unsafe { memmap2::MmapMut::map_mut(&file) }.unwrap();
+            Aliased { view, alias, path }
+        }
+        fn arm(&mut self, pool_pages: usize) -> Region {
+            let len = self.view.len();
+            let alias = self.alias.as_mut_ptr();
+            unsafe { Region::arm(self.view.as_mut_ptr(), len, pool_pages, Some(alias)) }.unwrap()
+        }
+        fn write(&self, offset: usize, v: u8) {
+            unsafe { self.view.as_ptr().add(offset).cast_mut().write_volatile(v) };
+        }
+        fn read(&self, offset: usize) -> u8 {
+            unsafe { self.view.as_ptr().add(offset).read_volatile() }
+        }
+    }
+    impl Drop for Aliased {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+
+    #[test]
+    fn a_remote_write_lands_in_the_region_and_is_not_reported() {
+        let mut m = Aliased::new(2);
+        let mut region = m.arm(4);
+        region.apply_remote(5, &[1, 2, 3]).unwrap();
+        assert_eq!((m.read(5), m.read(6), m.read(7)), (1, 2, 3));
+        assert_eq!(region.flush(), vec![]);
+    }
+
+    #[test]
+    fn a_remote_write_to_a_page_with_a_baseline_is_not_reported() {
+        let mut m = Aliased::new(2);
+        let mut region = m.arm(4);
+        m.write(0, 9);
+        assert_eq!(region.flush(), vec![r(0, 1)]); // page 0 now has a captured baseline
+        region.apply_remote(8, &[4, 4]).unwrap();
+        assert_eq!(region.flush(), vec![]);
+        assert_eq!(m.read(9), 4);
+    }
+
+    #[test]
+    fn a_remote_write_to_a_dirty_page_leaves_the_local_write_reported() {
+        let mut m = Aliased::new(1);
+        let mut region = m.arm(2);
+        m.write(0, 7);
+        region.apply_remote(16, &[5; 4]).unwrap();
+        assert_eq!(region.flush(), vec![r(0, 1)]);
+        assert_eq!(m.read(18), 5);
+    }
+
+    #[test]
+    fn a_remote_write_across_pages_and_into_untracked_pages_lands() {
+        let mut m = Aliased::new(3);
+        let page = os_page();
+        let mut region = m.arm(2); // one tracked page, two untracked
+        region.apply_remote(page - 2, &[1, 2, 3, 4]).unwrap();
+        assert_eq!(m.read(page - 1), 2);
+        assert_eq!(m.read(page + 1), 4);
+        assert_eq!(region.flush(), vec![]);
+    }
+
+    #[test]
+    fn a_remote_write_outside_the_region_is_refused_and_writes_nothing() {
+        let mut m = Aliased::new(1);
+        let len = m.view.len();
+        let mut region = m.arm(2);
+        assert!(matches!(
+            region.apply_remote(len - 1, &[1, 2]),
+            Err(Error::OutOfRegion { .. })
+        ));
+        assert!(region.apply_remote(usize::MAX, &[1, 2]).is_err());
+        assert_eq!(m.read(len - 1), 0);
+    }
+
+    #[test]
+    fn a_remote_write_needs_an_alias() {
+        let m = Map::new(1);
+        let mut region = m.arm(2);
+        assert!(matches!(region.apply_remote(0, &[1]), Err(Error::NoAlias)));
+    }
+
+    #[test]
+    fn disarm_makes_the_pages_writable() {
+        let m = Map::new(2);
+        let region = m.arm(4);
+        region.disarm().unwrap();
+        m.write(0, 1); // would fault into a dead region if the pages were still read-only
+        assert_eq!(m.read(0), 1);
     }
 }
