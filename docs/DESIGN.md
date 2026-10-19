@@ -58,7 +58,7 @@ owner's own writes avoid raising events).
 TESTED PASS: Linux x86_64 and aarch64 (glibc and musl), Windows x86_64 and arm64, FreeBSD (VM), macOS arm64
 (16 KiB pages) and x86_64. The one failing case was a Linux-shaped assertion (macOS kills with SIGKILL when
 SIGSEGV is blocked; still fatal) and is being fixed in the harness.
-UNVERIFIED: NetBSD, OpenBSD, Linux with 64 KiB pages, `vm.max_map_count` exhaustion, real JVM/Go/sanitizer
+UNVERIFIED (the 0.1.0 gate reads this list): macOS, a write from a thread that blocks SEGV/BUS (HANGS on the GitHub macos-26-arm64 runner image, run 39182659564; the spike saw a kill elsewhere; limit documented, not fixed), NetBSD, OpenBSD, Linux with 64 KiB pages, `vm.max_map_count` exhaustion, real JVM/Go/sanitizer
 handlers, 32-bit. The README table is the record; a platform is TESTED for *this crate* only once the crate
 passes the same cases in CI (the per-OS release gate).
 
