@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.0
+- Breaking: `Region::arm` takes a fourth argument, `alias: Option<*mut u8>` (a second writable mapping of the region). New `Region::apply_remote(offset, &[u8])` writes through the alias and updates the baseline so the write is not reported (`Error::NoAlias` without an alias, `Error::OutOfRegion` outside the region, nothing written on error). New `Region::disarm(self)` unprotects explicitly and reports failure. Tested on Windows; Unix by CI only.
+
 ## 0.0.9
 - `SECURITY.md`: private reporting via GitHub, RustSec filing for soundness bugs, credit policy.
 

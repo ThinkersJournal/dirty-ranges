@@ -68,7 +68,7 @@ impl Mapped {
     }
 
     pub fn arm(&self, pool_pages: usize) -> Region {
-        unsafe { Region::arm(self.base, self.len, pool_pages) }.unwrap()
+        unsafe { Region::arm(self.base, self.len, pool_pages, None) }.unwrap()
     }
 
     pub fn live(&self) -> &[u8] {
