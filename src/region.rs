@@ -131,6 +131,11 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
     if addr < inner.base || addr >= inner.base + inner.armed * inner.page {
         return None;
     }
+    #[cfg(dirty_ranges_conformance)]
+    if crate::conformance_hooks::ALLOC_IN_HANDLER.load(Ordering::Relaxed) {
+        // CONTROL: break the "handler never allocates" rule on purpose.
+        std::hint::black_box(Box::new(7u8));
+    }
     let pi = (addr - inner.base) / inner.page;
     let state = &inner.state[pi];
     loop {
@@ -147,8 +152,14 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
                     };
                     inner.valid[pi].store(true, Ordering::Release);
                 }
+                #[cfg(dirty_ranges_conformance)]
+                let forced_failure = crate::conformance_hooks::FAIL_PROTECT.load(Ordering::Relaxed);
+                #[cfg(not(dirty_ranges_conformance))]
+                let forced_failure = false;
                 // SAFETY: a whole armed page of the caller's mapping.
-                if !unsafe { sys::protect(inner.live(pi) as usize, inner.page, true) } {
+                if forced_failure
+                    || !unsafe { sys::protect(inner.live(pi) as usize, inner.page, true) }
+                {
                     state.abort_capture();
                     return Some(Fault::Fatal);
                 }
@@ -163,7 +174,22 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
     }
 }
 
+/// Whether the calling thread blocks `SIGSEGV` or `SIGBUS`.
+///
+/// **A thread that blocks them must not write to a trapped region.** The kernel cannot deliver the fault to
+/// the handler, so it kills the process (Linux with `SIGSEGV`, macOS with `SIGKILL`). That is fatal and loud,
+/// never silent corruption, and it is tested (`a_write_from_a_thread_that_blocks_the_fault_signals_is_fatal`).
+/// `Region::arm` does not look at the arming thread's mask, because the threads that matter are the writers,
+/// which it cannot see: call this on a thread you are about to let write if its mask is not under your control.
+pub fn fault_signals_blocked() -> bool {
+    let (segv, bus) = sys::blocked_fault_signals();
+    segv || bus
+}
+
 /// A memory region whose writes are trapped page by page.
+///
+/// Every thread that writes to the region must leave `SIGSEGV` and `SIGBUS` unblocked; see
+/// [`fault_signals_blocked`].
 pub struct Region {
     inner: *mut Inner,
     slot: usize,
@@ -254,6 +280,12 @@ impl Region {
             let mut j = i;
             while j + 1 < self.dirty.len() && self.dirty[j + 1] == self.dirty[j] + 1 {
                 j += 1;
+            }
+            #[cfg(dirty_ranges_conformance)]
+            if crate::conformance_hooks::SKIP_FLUSH_PROTECT.load(Ordering::Relaxed) {
+                // CONTROL: claim the pages but never re-protect them, so writers race the snapshot.
+                i = j + 1;
+                continue;
             }
             // SAFETY: whole armed pages of the caller's mapping.
             if !unsafe {
@@ -444,6 +476,39 @@ mod tests {
         let m = Map::new(1);
         let region = m.arm(2);
         assert_eq!(region.page_size(), m.page());
+    }
+
+    fn on_a_thread_that_blocks(sig: libc::c_int, f: impl FnOnce() + Send + 'static) {
+        std::thread::spawn(move || {
+            let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+            unsafe {
+                libc::sigemptyset(&mut set);
+                libc::sigaddset(&mut set, sig);
+                libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+            }
+            f();
+        })
+        .join()
+        .unwrap();
+    }
+
+    #[test]
+    fn the_query_reports_whether_this_thread_blocks_the_fault_signals() {
+        assert!(!fault_signals_blocked());
+        on_a_thread_that_blocks(libc::SIGSEGV, || assert!(fault_signals_blocked()));
+        on_a_thread_that_blocks(libc::SIGBUS, || assert!(fault_signals_blocked()));
+        assert!(!fault_signals_blocked(), "the block was one thread's");
+    }
+
+    /// Arming does not look at the arming thread's mask: what is fatal is a *writer* thread that blocks the
+    /// signals, and `arm` cannot see the writers. Callers query `fault_signals_blocked` where they care.
+    #[test]
+    fn arming_does_not_depend_on_the_arming_threads_signal_mask() {
+        let m = std::sync::Arc::new(Map::new(2));
+        let m2 = m.clone();
+        on_a_thread_that_blocks(libc::SIGSEGV, move || {
+            assert!(unsafe { Region::arm(m2.ptr, m2.len, 4) }.is_ok());
+        });
     }
 
     #[test]

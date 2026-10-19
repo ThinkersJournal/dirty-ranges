@@ -3,4 +3,4 @@
 #[cfg(unix)]
 mod unix;
 #[cfg(unix)]
-pub(crate) use unix::{install_handler, page_size, protect};
+pub(crate) use unix::{blocked_fault_signals, install_handler, page_size, protect};
