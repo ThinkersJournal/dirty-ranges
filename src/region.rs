@@ -1284,4 +1284,167 @@ mod tests {
         assert_eq!(m.read(8), 200, "a foreign write was lost");
         assert_eq!(m.read(page + 8), 200, "a foreign write was lost");
     }
+
+    #[test]
+    fn errors_say_what_went_wrong_and_only_the_os_error_has_a_source() {
+        use std::error::Error as _;
+        let cases = [
+            (
+                Error::Misaligned { page_size: 4096 },
+                "4096-byte page boundary",
+            ),
+            (Error::RegistryFull, "maximum number of regions"),
+            (Error::NoAlias, "without a writable alias"),
+            (
+                Error::OutOfRegion {
+                    offset: 7,
+                    len: 3,
+                    region_len: 9,
+                },
+                "3 bytes at offset 7 are outside the 9-byte region",
+            ),
+        ];
+        for (e, text) in cases {
+            assert!(e.to_string().contains(text), "{e} does not say {text:?}");
+            assert!(e.source().is_none());
+        }
+        let os = Error::Os(std::io::Error::other("boom"));
+        assert!(os.to_string().contains("boom"));
+        assert_eq!(os.source().unwrap().to_string(), "boom");
+    }
+
+    fn states(region: &Region) -> Vec<State> {
+        (0..region.armed_pages())
+            .map(|p| region.inner().state[p].load())
+            .collect()
+    }
+
+    #[test]
+    fn set_mode_switches_the_pages_asked_for_and_only_those() {
+        let m = Map::new(4);
+        let page = m.page();
+        let mut region = m.arm(8);
+        region.set_mode(page..page * 3, Mode::Scanned).unwrap();
+        assert_eq!(region.scanned, [false, true, true, false]);
+        assert_eq!(
+            states(&region),
+            [State::Clean, State::Dirty, State::Dirty, State::Clean]
+        );
+        region.set_mode(page * 2..page * 3, Mode::Trapped).unwrap();
+        assert_eq!(region.scanned, [false, true, false, false]);
+        assert_eq!(
+            states(&region),
+            [State::Clean, State::Dirty, State::Clean, State::Clean]
+        );
+    }
+
+    #[test]
+    fn a_switch_back_to_trapped_reports_each_page_at_its_own_offset() {
+        let m = Map::new(2);
+        let page = m.page();
+        let mut region = m.arm(4);
+        m.write(1, 1);
+        m.write(page + 1, 1);
+        assert_eq!(region.flush(), vec![r(1, 1), r(page + 1, 1)]); // both pages now use their second buffer
+        region.set_mode(0..page * 2, Mode::Scanned).unwrap();
+        m.write(2, 2);
+        m.write(page + 2, 2);
+        region.set_mode(0..page * 2, Mode::Trapped).unwrap();
+        assert_eq!(region.flush(), vec![r(2, 1), r(page + 2, 1)]);
+        m.write(3, 3);
+        m.write(page + 3, 3);
+        assert_eq!(region.flush(), vec![r(3, 1), r(page + 3, 1)]);
+    }
+
+    #[test]
+    fn the_last_byte_of_the_region_can_be_applied_remotely() {
+        let mut m = Aliased::new(1);
+        let len = m.view.len();
+        let mut region = m.arm(2);
+        region.apply_remote(len - 1, &[5]).unwrap();
+        assert_eq!(m.read(len - 1), 5);
+    }
+
+    #[test]
+    fn a_remote_write_across_two_pages_with_baselines_is_not_reported() {
+        let mut m = Aliased::new(2);
+        let page = os_page();
+        let mut region = m.arm(4);
+        m.write(0, 1);
+        m.write(page + 10, 1); // both pages are Dirty, so the flush compares both
+        region.apply_remote(page - 2, &[1, 2, 3, 4]).unwrap();
+        assert_eq!(region.flush(), vec![r(0, 1), r(page + 10, 1)]);
+        assert_eq!(m.read(page + 1), 4);
+    }
+
+    #[test]
+    fn rebaseline_absorbs_exactly_the_bytes_asked_for_on_a_dirty_page() {
+        let mut m = Aliased::new(1);
+        let mut region = m.arm(2);
+        m.write(0, 1); // Dirty
+        for at in [2, 3, 4, 6] {
+            m.foreign_write(at, 9);
+        }
+        region.rebaseline(2, 3).unwrap();
+        assert_eq!(region.flush(), vec![r(0, 1), r(6, 1)]);
+    }
+
+    #[test]
+    fn rebaseline_absorbs_exactly_the_bytes_asked_for_on_a_clean_page() {
+        let mut m = Aliased::new(1);
+        let mut region = m.arm(2);
+        m.write(0, 1);
+        region.flush(); // Clean, with a baseline
+        for at in [2, 3, 4, 6] {
+            m.foreign_write(at, 9);
+        }
+        region.rebaseline(2, 3).unwrap();
+        m.write(0, 2); // dirties the page so the next flush looks at it
+        assert_eq!(region.flush(), vec![r(0, 1), r(6, 1)]);
+    }
+
+    #[test]
+    fn pages_that_are_not_next_to_each_other_are_all_re_armed_by_a_flush() {
+        let m = Map::new(4);
+        let page = m.page();
+        let mut region = m.arm(8);
+        m.write(1, 1);
+        m.write(page * 2 + 1, 1);
+        assert_eq!(region.flush(), vec![r(1, 1), r(page * 2 + 1, 1)]);
+        m.write(2, 1);
+        m.write(page * 2 + 2, 1); // trapped again only if page 2 was re-protected
+        assert_eq!(region.flush(), vec![r(2, 1), r(page * 2 + 2, 1)]);
+    }
+
+    #[test]
+    fn dropping_a_region_makes_every_tracked_page_writable() {
+        let m = Map::new(4);
+        let page = m.page();
+        let region = m.arm(8);
+        drop(region);
+        for p in 0..4 {
+            m.write(p * page, 1); // would be fatal on a page left read-only
+        }
+        assert_eq!(m.read(page * 3), 1);
+    }
+
+    #[test]
+    fn disarm_makes_every_tracked_page_writable() {
+        let m = Map::new(4);
+        let page = m.page();
+        let region = m.arm(8);
+        region.disarm().unwrap();
+        for p in 0..4 {
+            m.write(p * page, 1);
+        }
+        assert_eq!(m.read(page * 3), 1);
+    }
+
+    #[test]
+    fn disarming_a_region_that_tracks_no_pages_succeeds() {
+        let m = Map::new(2);
+        let region = m.arm(1); // one buffer is not enough for a page: nothing tracked
+        assert_eq!(region.armed_pages(), 0);
+        region.disarm().unwrap();
+    }
 }
