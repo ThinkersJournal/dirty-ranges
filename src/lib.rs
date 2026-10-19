@@ -49,4 +49,4 @@ pub use scan::{ScanError, Scanner};
 #[cfg(unix)]
 pub use region::fault_signals_blocked;
 #[cfg(any(unix, windows))]
-pub use region::{Error, Region};
+pub use region::{Error, Mode, Region};

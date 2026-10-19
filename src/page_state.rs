@@ -3,6 +3,7 @@
 //! ```text
 //!   Clean --begin_capture--> Copying --finish_capture--> Dirty --begin_flush--> Flushing --finish_flush--> Clean
 //!   Copying --abort_capture--> Clean   (the handler could not unprotect the page)
+//!   Flushing --abort_flush--> Dirty    (a page being switched to trapped mode could not be re-protected)
 //! ```
 //!
 //! The handler owns the `Clean -> Copying -> Dirty` half and the flusher owns `Dirty -> Flushing -> Clean`.
@@ -84,6 +85,15 @@ impl PageState {
             .is_ok()
     }
 
+    /// Flusher: give a claimed page back still dirty, because it could not be re-protected. Panics unless the
+    /// page was `Flushing`.
+    pub fn abort_flush(&self) {
+        let r = self
+            .0
+            .compare_exchange(FLUSHING, DIRTY, Ordering::Release, Ordering::Relaxed);
+        assert!(r.is_ok(), "abort_flush on a page that was not Flushing");
+    }
+
     /// Flusher: the live page is captured. Panics unless the page was `Flushing`.
     pub fn finish_flush(&self) {
         let r = self
@@ -119,6 +129,17 @@ mod tests {
         assert_eq!(p.load(), State::Flushing);
         p.finish_flush();
         assert_eq!(p.load(), State::Clean);
+    }
+
+    #[test]
+    fn an_aborted_flush_leaves_the_page_dirty() {
+        let p = PageState::new();
+        assert!(p.begin_capture());
+        p.finish_capture();
+        assert!(p.begin_flush());
+        p.abort_flush();
+        assert_eq!(p.load(), State::Dirty);
+        assert!(p.begin_flush());
     }
 
     #[test]
