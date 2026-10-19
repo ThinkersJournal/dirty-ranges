@@ -190,7 +190,7 @@ pub fn fault_signals_blocked() -> bool {
 /// A memory region whose writes are trapped page by page.
 ///
 /// Every thread that writes to the region must leave `SIGSEGV` and `SIGBUS` unblocked; see
-/// [`fault_signals_blocked`].
+/// `fault_signals_blocked` (Unix).
 pub struct Region {
     inner: *mut Inner,
     slot: usize,
