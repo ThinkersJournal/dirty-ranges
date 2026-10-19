@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.3
+- Tests only. `cargo mutants` 27.1.0 on `src/region.rs`, no exclusions, Windows `--lib`, at 51af928: 168 mutants, 106 caught, 22 timeouts (non-terminating), 7 unviable, 33 missed. 21 of the 33 were test gaps and now have tests (error text and `source`, `set_mode` page selection and offsets, `rebaseline` byte range, `apply_remote` page boundary, non-adjacent pages re-armed, drop/disarm unprotect every page); a re-run of those functions leaves 10. `fault_signals_blocked` (Unix only) was re-run on Linux: 3 of 3 caught. Not killed, and why:
+  - `Inner::drop` -> `()`: leaks the baseline pool; no test can see a leak.
+  - `Region::disarm` (`Ok(())`, `armed > 0` with `<`, `armed * page` with `+`): `disarm` consumes `self`, so `Drop` unprotects the pages anyway; only a failing `VirtualProtect`/`mprotect` would show it, and that needs fault injection.
+  - `Drop for Region` `armed > 0` -> `>=`: an unprotect of length 0, whose failure is ignored.
+  - `flush` run grouping (`<` -> `>`, `+` -> `*` in the adjacency test): no grouping means one `protect` per page; same result, more calls.
+  - `flush` `i = j + 1` (two mutants): inside `#[cfg(dirty_ranges_conformance)]`, so not compiled here; the conformance controls job exercises it.
+  - Test-module helpers `on_a_thread_that_blocks` and `Aliased::drop`.
+
 ## 0.1.2
 - New `Region::rebaseline(offset, len)`: set the baseline of a range from the bytes that are in the region now, writing nothing to the region. For a write someone else already made (for example another process on the shared file) that must not be reported as local. `apply_remote` writes through the alias and can overwrite a newer foreign write; `rebaseline` cannot.
 
