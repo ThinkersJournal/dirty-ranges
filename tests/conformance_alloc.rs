@@ -2,7 +2,7 @@
 //! lock the faulting thread may hold) deadlocks here, so the handler is shown to need neither. Ported from the
 //! SDK lane's spike (`spike/trap-conformance`, PR #3). It has its own test binary because the allocator is
 //! process-wide.
-#![cfg(unix)]
+#![cfg(any(unix, windows))]
 
 mod common;
 

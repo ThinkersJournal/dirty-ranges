@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.8
+- Windows page-fault trapping: `Region` now works on Windows (`VirtualProtect` plus a vectored exception handler that saves and restores the last error and chains unrelated exceptions). The conformance suite runs on Windows too (including its controls, the VEH chaining cases and the stack-overflow cases); the Unix-only cases (libc `FILE` lock, blocked-signal write, signal-mask probe) stay Unix-only. New CI check `conformance controls (windows-latest)`.
+
 ## 0.0.7
 - Known limit: on the GitHub `macos-26-arm64` runner image a write from a thread that blocks `SIGSEGV`/`SIGBUS` to a trapped region hangs instead of being killed (run 39182659564). The test accepts a hang on macOS only and prints the outcome; macOS stays NOT TESTED for that case.
 - Rest of the conformance suite: `tests/conformance_children.rs` (blocked-signal write is fatal, chaining with another handler installed before and after ours, stack overflow with the trap armed behaves as without it, failed `protect` in the handler kills the process) and `tests/conformance_alloc.rs` (allocator that faults in its own critical section, with a control showing an allocating handler deadlocks). Child-process cases run through `tests/common`.
