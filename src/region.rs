@@ -1278,6 +1278,9 @@ mod tests {
             region.rebaseline(0, page * 2).unwrap();
         }
         writer.join().unwrap();
+        // The region unprotects its pages when dropped, so it must go before the mapping does (`m` is
+        // declared later, so it would drop first): another test's mapping may reuse the address.
+        drop(region);
         assert_eq!(m.read(8), 200, "a foreign write was lost");
         assert_eq!(m.read(page + 8), 200, "a foreign write was lost");
     }
