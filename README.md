@@ -41,7 +41,8 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 | 32-bit targets | UNVERIFIED | UNVERIFIED |
 
 Also UNVERIFIED: `vm.max_map_count` exhaustion, and coexistence with real JVM, Go or sanitizer signal handlers.
-Not yet done for a 1.0 gate: Miri on the safe parts, a BSD CI job.
+Miri runs in CI on the safe modules (`diff`, `range`, `scan`, `page_state`); the unsafe paths cannot run under it
+and are listed as UNVERIFIED-by-Miri in `docs/DESIGN.md`. Not yet done for a 1.0 gate: a BSD CI job.
 
 macOS CI note: in that same run the `conformance controls (macos-latest)` job failed once, in the control
 `flush_without_reprotect_loses_updates_control` (a test that deliberately breaks the crate; the child process
