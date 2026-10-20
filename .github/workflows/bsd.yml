@@ -1,0 +1,61 @@
+name: BSD
+
+# FreeBSD, OpenBSD and NetBSD in QEMU VMs on a Linux runner (cross-platform-actions). Its own workflow so that a
+# BSD problem (a package that is too old, a VM that will not boot) shows up here and nowhere else. Each job
+# installs the system's Rust, runs the ordinary tests, then the conformance suite with the controls compiled in.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  bsd:
+    name: test (${{ matrix.os }} ${{ matrix.version }} VM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: freebsd
+            version: "15.1"
+            install: sudo pkg install -y rust
+          - os: openbsd
+            version: "7.9"
+            install: sudo pkg_add rust
+          - os: netbsd
+            version: "11.0"
+            install: sudo pkgin -y install rust
+    defaults:
+      run:
+        shell: cpa.sh {0}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Start the VM
+        # v1.6.0
+        uses: cross-platform-actions/action@e0b9770014ba65d5e0815f15b74031c3a635f641
+        with:
+          operating_system: ${{ matrix.os }}
+          architecture: x86-64
+          version: ${{ matrix.version }}
+      - name: Install Rust
+        # A package download that stalls (NetBSD, run 39370039359, 30+ minutes) should fail fast, not use the job's 90.
+        timeout-minutes: 20
+        run: |
+          ${{ matrix.install }}
+          rustc --version
+          cargo --version
+          uname -a
+      - name: Tests
+        timeout-minutes: 30
+        run: cargo test --all-features --no-fail-fast
+      - name: Conformance suite with the controls compiled in
+        timeout-minutes: 30
+        env:
+          RUSTFLAGS: --cfg dirty_ranges_conformance
+        run: cargo test --test conformance --test conformance_children --test conformance_alloc -- --nocapture

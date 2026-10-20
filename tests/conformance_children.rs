@@ -105,11 +105,17 @@ unsafe extern "C" fn other_handler(
         let base = OTHER_BASE.load(Ordering::Acquire);
         let page = page_size();
         if addr >= base && addr < base + page {
-            libc::mprotect(
+            let raised = libc::mprotect(
                 base as *mut libc::c_void,
                 page,
                 libc::PROT_READ | libc::PROT_WRITE,
             );
+            if raised != 0 {
+                // Returning now would re-run the store and fault forever; say so before that happens.
+                let msg = b"OTHER-MPROTECT-FAILED
+";
+                libc::write(1, msg.as_ptr().cast(), msg.len());
+            }
             OTHER_HITS.fetch_add(1, Ordering::SeqCst);
             return;
         }
@@ -153,15 +159,18 @@ fn install_other_handler() {
 #[cfg(unix)]
 fn other_page() {
     unsafe {
+        // Mapped readable and writable, then made inaccessible: on NetBSD a mapping created PROT_NONE may not be
+        // raised again, which is not what these cases are about.
         let p = libc::mmap(
             std::ptr::null_mut(),
             page_size(),
-            libc::PROT_NONE,
+            libc::PROT_READ | libc::PROT_WRITE,
             libc::MAP_PRIVATE | libc::MAP_ANON,
             -1,
             0,
         );
         assert_ne!(p, libc::MAP_FAILED);
+        assert_eq!(libc::mprotect(p, page_size(), libc::PROT_NONE), 0);
         OTHER_BASE.store(p as usize, Ordering::Release);
     }
 }
@@ -219,24 +228,71 @@ fn other_page() {
     }
 }
 
+/// Progress marker for the parent to print if this child hangs (a hung child's output is all we get).
+fn step(what: &str) {
+    println!("STEP {what}");
+    let _ = std::io::stdout().flush();
+}
+
+/// Whether the OS lets `mprotect` raise a mapping that was created `PROT_NONE`. NetBSD does not (`EACCES`, run
+/// 39378372000): the chaining cases once relied on it and hung there, so they now map read/write first. The
+/// outcome is printed on every OS; only NetBSD is allowed to refuse.
+#[cfg(unix)]
+#[test]
+fn mprotect_can_raise_a_mapping_created_prot_none() {
+    unsafe {
+        let page = page_size();
+        let p = libc::mmap(
+            std::ptr::null_mut(),
+            page,
+            libc::PROT_NONE,
+            libc::MAP_PRIVATE | libc::MAP_ANON,
+            -1,
+            0,
+        );
+        assert_ne!(p, libc::MAP_FAILED);
+        let raised = libc::mprotect(p, page, libc::PROT_READ | libc::PROT_WRITE);
+        let error = std::io::Error::last_os_error();
+        if raised == 0 {
+            eprintln!("mprotect up from a PROT_NONE mapping: works");
+        } else {
+            eprintln!("mprotect up from a PROT_NONE mapping: refused: {error}");
+        }
+        assert!(
+            raised == 0 || cfg!(target_os = "netbsd"),
+            "mprotect up from PROT_NONE failed: {error}"
+        );
+        libc::munmap(p, page);
+    }
+}
+
 fn chain_body(ours_first: bool) {
     other_page();
+    step("other page mapped");
     let m = Mapped::new(4);
+    step("region mapped");
     let mut region;
     if ours_first {
         region = m.arm(16);
+        step("ours installed");
         install_other_handler();
+        step("other installed");
     } else {
         install_other_handler();
+        step("other installed");
         region = m.arm(16);
+        step("ours installed");
     }
     m.store(0, 1);
+    step("trapped store done");
     assert_eq!(
         region.flush(),
         vec![Range { offset: 0, len: 1 }],
         "a trapped store did not reach our handler"
     );
+    step("flushed");
     unsafe { std::ptr::write_volatile(OTHER_BASE.load(Ordering::Acquire) as *mut u8, 1) };
+    step("other store done");
     assert_eq!(
         OTHER_HITS.load(Ordering::SeqCst),
         1,

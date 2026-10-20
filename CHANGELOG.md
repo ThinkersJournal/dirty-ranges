@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.12
+- README: FreeBSD 15.1, OpenBSD 7.9 and NetBSD 11.0 (x86-64, QEMU VMs) are TESTED, from `bsd.yml` run 39379433479 on PR #18 at `358ecf8`: 95 lib tests, the conformance suite, and the suite again with the controls compiled in, on all three; the blocked-signal write dies with signal 11 on all three.
+
+## 0.1.11
+- Tests only. NetBSD cause found (run 39378372000): `mprotect` cannot raise a mapping that was created `PROT_NONE` (`Permission denied`), so the signal-chaining cases' own handler could never open its page and the store re-faulted forever. With the page mapped read/write first, both chaining cases pass on NetBSD. `mprotect_can_raise_a_mapping_created_prot_none` now records the OS's answer and lets only NetBSD refuse. Not a crate defect: `Region` only toggles protection on a mapping the caller made readable and writable.
+
+## 0.1.10
+- `bsd.yml`: per-step timeouts (20 minutes for installing Rust, 30 for each test step), because the NetBSD job sat in `Install Rust` for 30+ minutes on two attempts of run 39370039359 while FreeBSD and OpenBSD finished.
+
+## 0.1.9
+- Tests only. NetBSD hung in both signal-chaining cases at the store to the other handler's own page (run 39367038289, step markers): that page was mapped `PROT_NONE`, and the suspect is NetBSD refusing to raise protection on such a mapping. The page is now mapped read/write and then made inaccessible; the other handler reports a failed `mprotect`; a new test `mprotect_can_raise_a_mapping_created_prot_none` asks the OS directly. README: FreeBSD 15.1 and OpenBSD 7.9 rows TESTED from the BSD workflow, NetBSD stays UNVERIFIED (hang).
+
+## 0.1.8
+- Tests only: the signal-chaining conformance child prints a `STEP` marker at each stage, so a hung child's output says where it stopped. First BSD VM run (PR #18, run 39366345598): FreeBSD 15.1 and OpenBSD 7.9 pass everything (95 lib tests, conformance with and without controls); NetBSD 11.0 passes the lib tests and the other conformance cases but `chaining_with_the_other_handler_installed_before_ours` and `..._after_ours` hang. Cause not yet known.
+
+## 0.1.7
+- New workflow `bsd.yml`: FreeBSD 15.1, OpenBSD 7.9 and NetBSD 11.0 (x86-64) in QEMU VMs through `cross-platform-actions/action` v1.6.0 (pinned by SHA), each running the tests and the conformance suite with the controls compiled in. Not yet run: the README rows stay UNVERIFIED until it is green. README Known limits gain the observation from macOS hang-hunt run 39358930277 that the blocked-signal write likely livelocks on the faulting store.
+
 ## 0.1.6
 - New CI job `miri (safe modules)`: `diff`, `range`, `scan` and `page_state` tests under Miri with strict provenance, on a pinned nightly (`nightly-2026-09-29`). The unsafe paths cannot run under Miri; `docs/DESIGN.md` now names each as UNVERIFIED-by-Miri with the real-mapping tests that cover it.
 
