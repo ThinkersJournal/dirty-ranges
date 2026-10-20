@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.7
+- New workflow `bsd.yml`: FreeBSD 15.1, OpenBSD 7.9 and NetBSD 11.0 (x86-64) in QEMU VMs through `cross-platform-actions/action` v1.6.0 (pinned by SHA), each running the tests and the conformance suite with the controls compiled in. Not yet run: the README rows stay UNVERIFIED until it is green. README Known limits gain the observation from macOS hang-hunt run 39358930277 that the blocked-signal write likely livelocks on the faulting store.
+
 ## 0.1.6
 - New CI job `miri (safe modules)`: `diff`, `range`, `scan` and `page_state` tests under Miri with strict provenance, on a pinned nightly (`nightly-2026-09-29`). The unsafe paths cannot run under Miri; `docs/DESIGN.md` now names each as UNVERIFIED-by-Miri with the real-mapping tests that cover it.
 

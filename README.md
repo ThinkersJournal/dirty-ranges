@@ -35,14 +35,14 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 | Windows arm64 | PASS | UNVERIFIED (not in our CI) |
 | macOS arm64 (16 KiB pages) | PASS, except one Linux-shaped assertion (macOS kills with SIGKILL; still fatal) | **TESTED** (CI), except the blocked-signal write below (NOT TESTED) |
 | macOS x86_64 | PASS | UNVERIFIED (not in our CI) |
-| FreeBSD | PASS (VM) | UNVERIFIED: compiles (`cargo check --target x86_64-unknown-freebsd`), never run |
-| NetBSD, OpenBSD | UNVERIFIED | UNVERIFIED: not run |
+| FreeBSD | PASS (VM) | UNVERIFIED: compiles (`cargo check --target x86_64-unknown-freebsd`); a QEMU-VM CI job (`bsd.yml`) exists, a row becomes TESTED only when it is green |
+| NetBSD, OpenBSD | UNVERIFIED | UNVERIFIED: same VM job, same rule |
 | Linux with 64 KiB pages | UNVERIFIED | UNVERIFIED |
 | 32-bit targets | UNVERIFIED | UNVERIFIED |
 
 Also UNVERIFIED: `vm.max_map_count` exhaustion, and coexistence with real JVM, Go or sanitizer signal handlers.
 Miri runs in CI on the safe modules (`diff`, `range`, `scan`, `page_state`); the unsafe paths cannot run under it
-and are listed as UNVERIFIED-by-Miri in `docs/DESIGN.md`. Not yet done for a 1.0 gate: a BSD CI job.
+and are listed as UNVERIFIED-by-Miri in `docs/DESIGN.md`. Not yet done for a 1.0 gate: a green BSD CI run (the job exists).
 
 macOS CI note: in that same run the `conformance controls (macos-latest)` job failed once, in the control
 `flush_without_reprotect_loses_updates_control` (a test that deliberately breaks the crate; the child process
@@ -51,6 +51,7 @@ hung). The same job passed on the runs before it (`51af928`, `11665fc`). Not yet
 ## Known limits
 
 - **A thread that blocks `SIGSEGV`/`SIGBUS` must not write to a trapped region.** The kernel cannot deliver the fault to our handler, so it kills the process (Linux with `SIGSEGV`, macOS with `SIGKILL`). That is fatal and loud, never silent corruption, and it is tested on Linux. **macOS: on the GitHub `macos-26-arm64` runner image (run 39182659564) the write HANGS instead; the spike saw a kill on other hardware. Documented limit, not fixed; macOS is NOT TESTED for this case.** `fault_signals_blocked()` lets a caller check a thread before it writes. `Region::arm` does not check the arming thread: the writers are what matter.
+  *Likely mechanism (not proven):* in the macOS hang-hunt run 39358930277 the `sample` stacks of the hung child show the writing thread on a Rust frame in the test binary, not waiting in a system call, while the other threads wait: it looks like the faulting store being re-executed forever (a livelock) rather than the process being killed. The frame is unsymbolised.
 - Never `read()`/`recv()` from the OS into a trapped region: the kernel reports `EFAULT` or a partial write instead of faulting.
 - At most 64 regions per process.
 
