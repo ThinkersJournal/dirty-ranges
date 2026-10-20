@@ -188,6 +188,30 @@ impl Outcome {
 
 const MARKER: &str = "CASE-BODY-FINISHED";
 
+/// Where a hung child is stuck, for the failure message: macOS `sample` (the runner lets it read our own
+/// children); empty elsewhere.
+fn hang_stacks(pid: u32) -> String {
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("sample")
+            .args([&pid.to_string(), "3"])
+            .output()
+            .map(|o| {
+                format!(
+                    "\n---- sample {pid} ----\n{}{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                )
+            })
+            .unwrap_or_else(|e| format!("\n---- sample {pid} failed to start: {e} ----\n"))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = pid;
+        String::new()
+    }
+}
+
 /// Run `body` in a child process (some cases must die, and the fault handler is process-global).
 ///
 /// `test_name` is the calling `#[test]` function; `label` names this case within it (a test may run several).
@@ -230,11 +254,13 @@ pub fn in_child(
         s
     });
     let start = Instant::now();
+    let mut stacks = String::new();
     let status = loop {
         if let Some(status) = child.try_wait().unwrap() {
             break Some(status);
         }
         if start.elapsed() > limit {
+            stacks = hang_stacks(child.id());
             let _ = child.kill();
             let _ = child.wait();
             break None;
@@ -243,6 +269,7 @@ pub fn in_child(
     };
     let mut output = t_out.join().unwrap();
     output.push_str(&t_err.join().unwrap());
+    output.push_str(&stacks);
     Some(match status {
         None => Outcome::Hung { output },
         Some(st) if output.contains(MARKER) && st.success() => Outcome::Passed { output },

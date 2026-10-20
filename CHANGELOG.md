@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.5
+- Tests and CI only. A conformance child that hangs now has its stacks captured before it is killed (macOS `sample`), so the failure message says where it is stuck. New manual workflow `macOS hang hunt` (`workflow_dispatch`) runs the whole conformance suite repeatedly on a macOS runner and stops at the first failure. Context: `conformance controls (macos-latest)` hung once in `flush_without_reprotect_loses_updates_control` (run 39287647738, `main` at `cf67413`) and passed 5 of 5 re-runs of the same job.
+
 ## 0.1.4
 - README: status, API list and platform table brought up to date. TESTED rows come only from our own CI (run 39287647738, `main` at `cf67413`): Linux x86_64 glibc, Windows x86_64, macOS arm64 (except the blocked-signal write). Everything else is UNVERIFIED. Records one macOS failure of a conformance control in that run.
 

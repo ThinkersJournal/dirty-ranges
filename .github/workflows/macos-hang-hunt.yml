@@ -1,0 +1,39 @@
+name: macOS hang hunt
+
+# Manual only. Runs the whole conformance suite (with the controls compiled in) over and over on a macOS
+# runner and stops at the first failure, so a rare hang (seen once: run 39287647738,
+# `flush_without_reprotect_loses_updates_control`) comes with `sample` stacks of the hung child.
+
+on:
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: How many times to run the suite
+        default: "40"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  hunt:
+    name: conformance rounds (macos-latest)
+    runs-on: macos-latest
+    timeout-minutes: 120
+    env:
+      RUSTFLAGS: --cfg dirty_ranges_conformance
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - name: Run the suite until it fails
+        env:
+          ROUNDS: ${{ inputs.rounds }}
+        run: |
+          for i in $(seq 1 "$ROUNDS"); do
+            echo "=== round $i ==="
+            cargo test --test conformance --test conformance_children --test conformance_alloc -- --nocapture || { echo "FAILED in round $i"; exit 1; }
+          done
