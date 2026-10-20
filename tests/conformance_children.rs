@@ -234,8 +234,9 @@ fn step(what: &str) {
     let _ = std::io::stdout().flush();
 }
 
-/// Whether the OS lets `mprotect` raise a mapping that was created `PROT_NONE` (the chaining cases once relied
-/// on it; NetBSD hung there, run 39367038289).
+/// Whether the OS lets `mprotect` raise a mapping that was created `PROT_NONE`. NetBSD does not (`EACCES`, run
+/// 39378372000): the chaining cases once relied on it and hung there, so they now map read/write first. The
+/// outcome is printed on every OS; only NetBSD is allowed to refuse.
 #[cfg(unix)]
 #[test]
 fn mprotect_can_raise_a_mapping_created_prot_none() {
@@ -252,7 +253,15 @@ fn mprotect_can_raise_a_mapping_created_prot_none() {
         assert_ne!(p, libc::MAP_FAILED);
         let raised = libc::mprotect(p, page, libc::PROT_READ | libc::PROT_WRITE);
         let error = std::io::Error::last_os_error();
-        assert_eq!(raised, 0, "mprotect up from PROT_NONE failed: {error}");
+        if raised == 0 {
+            eprintln!("mprotect up from a PROT_NONE mapping: works");
+        } else {
+            eprintln!("mprotect up from a PROT_NONE mapping: refused: {error}");
+        }
+        assert!(
+            raised == 0 || cfg!(target_os = "netbsd"),
+            "mprotect up from PROT_NONE failed: {error}"
+        );
         libc::munmap(p, page);
     }
 }

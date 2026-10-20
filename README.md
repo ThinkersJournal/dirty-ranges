@@ -37,7 +37,7 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 | macOS x86_64 | PASS | UNVERIFIED (not in our CI) |
 | FreeBSD 15.1 | PASS (VM) | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.98.1; run 39367038289 on PR #18 at `c5bb028`) |
 | OpenBSD 7.9 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.94.1; same run) |
-| NetBSD 11.0 | UNVERIFIED | UNVERIFIED: tests and most conformance cases pass, but both signal-chaining cases HANG (same run); cause under investigation |
+| NetBSD 11.0 | UNVERIFIED | UNVERIFIED: lib tests, conformance and both chaining cases pass in the VM (run 39378372000); the controls run has not completed yet. NetBSD refuses `mprotect` on a mapping created `PROT_NONE` (a test fixture had relied on it) |
 | Linux with 64 KiB pages | UNVERIFIED | UNVERIFIED |
 | 32-bit targets | UNVERIFIED | UNVERIFIED |
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.11
+- Tests only. NetBSD cause found (run 39378372000): `mprotect` cannot raise a mapping that was created `PROT_NONE` (`Permission denied`), so the signal-chaining cases' own handler could never open its page and the store re-faulted forever. With the page mapped read/write first, both chaining cases pass on NetBSD. `mprotect_can_raise_a_mapping_created_prot_none` now records the OS's answer and lets only NetBSD refuse. Not a crate defect: `Region` only toggles protection on a mapping the caller made readable and writable.
+
 ## 0.1.10
 - `bsd.yml`: per-step timeouts (20 minutes for installing Rust, 30 for each test step), because the NetBSD job sat in `Install Rust` for 30+ minutes on two attempts of run 39370039359 while FreeBSD and OpenBSD finished.
 
