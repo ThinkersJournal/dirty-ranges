@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.4
+- README: status, API list and platform table brought up to date. TESTED rows come only from our own CI (run 39287647738, `main` at `cf67413`): Linux x86_64 glibc, Windows x86_64, macOS arm64 (except the blocked-signal write). Everything else is UNVERIFIED. Records one macOS failure of a conformance control in that run.
+
 ## 0.1.3
 - Tests only. `cargo mutants` 27.1.0 on `src/region.rs`, no exclusions, Windows `--lib`, at 51af928: 168 mutants, 106 caught, 22 timeouts (non-terminating), 7 unviable, 33 missed. 18 were test gaps and are now killed by new tests (error text and `source`, `set_mode` page selection and offsets, `rebaseline` byte range, `apply_remote` page boundary, non-adjacent pages re-armed, drop/disarm unprotect every page); 3 are in `fault_signals_blocked`, which is Unix-only and was re-run on Linux (3 of 3 caught). The other 12 are not killed (re-run of the touched functions after the new tests, `apply_remote` re-run alone; the whole file was not re-run):
   - `Inner::drop` -> `()`: leaks the baseline pool; no test can see a leak.
