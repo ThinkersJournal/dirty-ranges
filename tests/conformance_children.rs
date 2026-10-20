@@ -105,11 +105,17 @@ unsafe extern "C" fn other_handler(
         let base = OTHER_BASE.load(Ordering::Acquire);
         let page = page_size();
         if addr >= base && addr < base + page {
-            libc::mprotect(
+            let raised = libc::mprotect(
                 base as *mut libc::c_void,
                 page,
                 libc::PROT_READ | libc::PROT_WRITE,
             );
+            if raised != 0 {
+                // Returning now would re-run the store and fault forever; say so before that happens.
+                let msg = b"OTHER-MPROTECT-FAILED
+";
+                libc::write(1, msg.as_ptr().cast(), msg.len());
+            }
             OTHER_HITS.fetch_add(1, Ordering::SeqCst);
             return;
         }
@@ -153,15 +159,18 @@ fn install_other_handler() {
 #[cfg(unix)]
 fn other_page() {
     unsafe {
+        // Mapped readable and writable, then made inaccessible: on NetBSD a mapping created PROT_NONE may not be
+        // raised again, which is not what these cases are about.
         let p = libc::mmap(
             std::ptr::null_mut(),
             page_size(),
-            libc::PROT_NONE,
+            libc::PROT_READ | libc::PROT_WRITE,
             libc::MAP_PRIVATE | libc::MAP_ANON,
             -1,
             0,
         );
         assert_ne!(p, libc::MAP_FAILED);
+        assert_eq!(libc::mprotect(p, page_size(), libc::PROT_NONE), 0);
         OTHER_BASE.store(p as usize, Ordering::Release);
     }
 }
@@ -223,6 +232,29 @@ fn other_page() {
 fn step(what: &str) {
     println!("STEP {what}");
     let _ = std::io::stdout().flush();
+}
+
+/// Whether the OS lets `mprotect` raise a mapping that was created `PROT_NONE` (the chaining cases once relied
+/// on it; NetBSD hung there, run 39367038289).
+#[cfg(unix)]
+#[test]
+fn mprotect_can_raise_a_mapping_created_prot_none() {
+    unsafe {
+        let page = page_size();
+        let p = libc::mmap(
+            std::ptr::null_mut(),
+            page,
+            libc::PROT_NONE,
+            libc::MAP_PRIVATE | libc::MAP_ANON,
+            -1,
+            0,
+        );
+        assert_ne!(p, libc::MAP_FAILED);
+        let raised = libc::mprotect(p, page, libc::PROT_READ | libc::PROT_WRITE);
+        let error = std::io::Error::last_os_error();
+        assert_eq!(raised, 0, "mprotect up from PROT_NONE failed: {error}");
+        libc::munmap(p, page);
+    }
 }
 
 fn chain_body(ours_first: bool) {

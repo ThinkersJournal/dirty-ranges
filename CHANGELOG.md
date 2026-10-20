@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.9
+- Tests only. NetBSD hung in both signal-chaining cases at the store to the other handler's own page (run 39367038289, step markers): that page was mapped `PROT_NONE`, and the suspect is NetBSD refusing to raise protection on such a mapping. The page is now mapped read/write and then made inaccessible; the other handler reports a failed `mprotect`; a new test `mprotect_can_raise_a_mapping_created_prot_none` asks the OS directly. README: FreeBSD 15.1 and OpenBSD 7.9 rows TESTED from the BSD workflow, NetBSD stays UNVERIFIED (hang).
+
 ## 0.1.8
 - Tests only: the signal-chaining conformance child prints a `STEP` marker at each stage, so a hung child's output says where it stopped. First BSD VM run (PR #18, run 39366345598): FreeBSD 15.1 and OpenBSD 7.9 pass everything (95 lib tests, conformance with and without controls); NetBSD 11.0 passes the lib tests and the other conformance cases but `chaining_with_the_other_handler_installed_before_ours` and `..._after_ours` hang. Cause not yet known.
 
