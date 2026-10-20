@@ -42,13 +42,24 @@ jobs:
       fail-fast: false
       # Shared memory and page protection are platform-specific: all three must run the tests.
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest, ubuntu-24.04-arm, windows-11-arm, macos-15-intel]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           toolchain: stable
       - run: cargo test --all-features --no-fail-fast
+
+  test-musl:
+    name: test (linux x86_64 musl)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+          targets: x86_64-unknown-linux-musl
+      - run: cargo test --all-features --no-fail-fast --target x86_64-unknown-linux-musl
 
   doc:
     name: doc

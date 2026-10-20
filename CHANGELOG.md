@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.13
+- CI only. `test` also runs on `ubuntu-24.04-arm` (Linux aarch64 glibc), `windows-11-arm` and `macos-15-intel` (macOS x86_64); new job `test (linux x86_64 musl)`. README rows move to TESTED only from a green run.
+
 ## 0.1.12
 - README: FreeBSD 15.1, OpenBSD 7.9 and NetBSD 11.0 (x86-64, QEMU VMs) are TESTED, from `bsd.yml` run 39379433479 on PR #18 at `358ecf8`: 95 lib tests, the conformance suite, and the suite again with the controls compiled in, on all three; the blocked-signal write dies with signal 11 on all three.
 
