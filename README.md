@@ -30,12 +30,14 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 | Platform | Harness result | This crate |
 |---|---|---|
 | Linux x86_64, glibc | PASS | **TESTED** (CI) |
-| Linux aarch64, glibc / musl; Linux x86_64 musl | PASS | UNVERIFIED (not in our CI) |
+| Linux aarch64, glibc | PASS | **TESTED** (CI, `ubuntu-24.04-arm`; run 39381650147 on PR #19 at `5ba2758`) |
+| Linux x86_64, musl | PASS | **TESTED** (CI, `x86_64-unknown-linux-musl` on `ubuntu-latest`; same run) |
+| Linux aarch64, musl | PASS | UNVERIFIED (not in our CI) |
 | Windows x86_64 | PASS | **TESTED** (CI) |
-| Windows arm64 | PASS | UNVERIFIED (not in our CI) |
+| Windows arm64 | PASS | **TESTED** (CI, `windows-11-arm`; same run) |
 | macOS arm64 (16 KiB pages) | PASS, except one Linux-shaped assertion (macOS kills with SIGKILL; still fatal) | **TESTED** (CI), except the blocked-signal write below (NOT TESTED) |
-| macOS x86_64 | PASS | UNVERIFIED (not in our CI) |
-| FreeBSD 15.1 | PASS (VM) | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.98.1; run 39379433479 on PR #18 at `358ecf8`) |
+| macOS x86_64 | PASS | **TESTED** (CI, `macos-15-intel`; same run) |
+| FreeBSD 15.1 | PASS (VM) | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.98.1; run 39381482015 on `main` at `f326856`) |
 | OpenBSD 7.9 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.94.1; same run) |
 | NetBSD 11.0 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.96.1; same run). NetBSD refuses `mprotect` on a mapping created `PROT_NONE`; a test fixture had relied on it |
 | Linux with 64 KiB pages | UNVERIFIED | UNVERIFIED |
@@ -43,7 +45,7 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 
 Also UNVERIFIED: `vm.max_map_count` exhaustion, and coexistence with real JVM, Go or sanitizer signal handlers.
 Miri runs in CI on the safe modules (`diff`, `range`, `scan`, `page_state`); the unsafe paths cannot run under it
-and are listed as UNVERIFIED-by-Miri in `docs/DESIGN.md`. The BSD jobs (`bsd.yml`) were green for FreeBSD, OpenBSD and NetBSD in the run above (VMs, x86-64 only; the run is on a PR branch, re-verify on `main` after the merge).
+and are listed as UNVERIFIED-by-Miri in `docs/DESIGN.md`. The BSD jobs (`bsd.yml`) were green for FreeBSD, OpenBSD and NetBSD in the run above (VMs, x86-64 only; run on `main`).
 
 macOS CI note: in that same run the `conformance controls (macos-latest)` job failed once, in the control
 `flush_without_reprotect_loses_updates_control` (a test that deliberately breaks the crate; the child process
