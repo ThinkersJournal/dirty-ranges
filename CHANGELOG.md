@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.12
+- README: FreeBSD 15.1, OpenBSD 7.9 and NetBSD 11.0 (x86-64, QEMU VMs) are TESTED, from `bsd.yml` run 39379433479 on PR #18 at `358ecf8`: 95 lib tests, the conformance suite, and the suite again with the controls compiled in, on all three; the blocked-signal write dies with signal 11 on all three.
+
 ## 0.1.11
 - Tests only. NetBSD cause found (run 39378372000): `mprotect` cannot raise a mapping that was created `PROT_NONE` (`Permission denied`), so the signal-chaining cases' own handler could never open its page and the store re-faulted forever. With the page mapped read/write first, both chaining cases pass on NetBSD. `mprotect_can_raise_a_mapping_created_prot_none` now records the OS's answer and lets only NetBSD refuse. Not a crate defect: `Region` only toggles protection on a mapping the caller made readable and writable.
 

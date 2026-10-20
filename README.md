@@ -35,15 +35,15 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 | Windows arm64 | PASS | UNVERIFIED (not in our CI) |
 | macOS arm64 (16 KiB pages) | PASS, except one Linux-shaped assertion (macOS kills with SIGKILL; still fatal) | **TESTED** (CI), except the blocked-signal write below (NOT TESTED) |
 | macOS x86_64 | PASS | UNVERIFIED (not in our CI) |
-| FreeBSD 15.1 | PASS (VM) | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.98.1; run 39367038289 on PR #18 at `c5bb028`) |
+| FreeBSD 15.1 | PASS (VM) | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.98.1; run 39379433479 on PR #18 at `358ecf8`) |
 | OpenBSD 7.9 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.94.1; same run) |
-| NetBSD 11.0 | UNVERIFIED | UNVERIFIED: lib tests, conformance and both chaining cases pass in the VM (run 39378372000); the controls run has not completed yet. NetBSD refuses `mprotect` on a mapping created `PROT_NONE` (a test fixture had relied on it) |
+| NetBSD 11.0 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.96.1; same run). NetBSD refuses `mprotect` on a mapping created `PROT_NONE`; a test fixture had relied on it |
 | Linux with 64 KiB pages | UNVERIFIED | UNVERIFIED |
 | 32-bit targets | UNVERIFIED | UNVERIFIED |
 
 Also UNVERIFIED: `vm.max_map_count` exhaustion, and coexistence with real JVM, Go or sanitizer signal handlers.
 Miri runs in CI on the safe modules (`diff`, `range`, `scan`, `page_state`); the unsafe paths cannot run under it
-and are listed as UNVERIFIED-by-Miri in `docs/DESIGN.md`. Not yet done for a 1.0 gate: a green BSD CI run (the job exists).
+and are listed as UNVERIFIED-by-Miri in `docs/DESIGN.md`. The BSD jobs (`bsd.yml`) were green for FreeBSD, OpenBSD and NetBSD in the run above (VMs, x86-64 only; the run is on a PR branch, re-verify on `main` after the merge).
 
 macOS CI note: in that same run the `conformance controls (macos-latest)` job failed once, in the control
 `flush_without_reprotect_loses_updates_control` (a test that deliberately breaks the crate; the child process
