@@ -30,7 +30,8 @@ jobs:
             install: sudo pkg_add rust
           - os: netbsd
             version: "11.0"
-            install: sudo pkgin -y install rust
+            # The pkgin mirror stalled `Install Rust` four times (runs 39370039359, 39381650352): retry, each attempt bounded.
+            install: ok=0; for i in 1 2 3; do if timeout 300 sudo pkgin -y install rust; then ok=1; break; fi; done; test "$ok" = 1
     defaults:
       run:
         shell: cpa.sh {0}
