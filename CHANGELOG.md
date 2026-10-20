@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.6
+- New CI job `miri (safe modules)`: `diff`, `range`, `scan` and `page_state` tests under Miri with strict provenance, on a pinned nightly (`nightly-2026-09-29`). The unsafe paths cannot run under Miri; `docs/DESIGN.md` now names each as UNVERIFIED-by-Miri with the real-mapping tests that cover it.
+
 ## 0.1.5
 - Tests and CI only. A conformance child that hangs now has its stacks captured before it is killed (macOS `sample`), so the failure message says where it is stuck. New manual workflow `macOS hang hunt` (`workflow_dispatch`) runs the whole conformance suite repeatedly on a macOS runner and stops at the first failure. Context: `conformance controls (macos-latest)` hung once in `flush_without_reprotect_loses_updates_control` (run 39287647738, `main` at `cf67413`) and passed 5 of 5 re-runs of the same job.
 

@@ -91,6 +91,20 @@ Fault ≤15 µs (spike: 11–12 µs Linux); re-protect 1024 pages ≈0.1 ms (spi
 - `diff` and range coalescing stay safe code and carry the mutation testing.
 - Miri runs on what Miri can run. The VEH / SIGSEGV / `mprotect` paths cannot run under Miri and are named
   **UNVERIFIED-by-Miri**, each with its real-mapping test.
+- **Miri status (CI job `miri (safe modules)`, nightly pinned):** `diff`, `range`, `scan` and `page_state` run
+  under Miri with strict provenance (45 tests at 0.1.5; `cargo miri test --lib -- diff:: range:: scan:: page_state::`).
+- **UNVERIFIED-by-Miri** (cannot run under Miri: they need real page protection and fault handlers). Each is
+  covered by a real-mapping test instead:
+  - `sys` (`protect`, `install_handler`, `page_size`, the `SIGSEGV`/`SIGBUS` handler and the Windows vectored
+    handler): `tests/conformance*.rs` (every case, plus the controls job).
+  - `region::on_fault` / `handle` (the fault handler) and the registry `SLOTS`/`ACTIVE`: `region::tests`
+    (`writers_on_many_threads_are_all_seen`, `two_regions_in_one_process_are_tracked_independently`) and the
+    conformance cases.
+  - `Inner::buffer`, `write_through`, `rebaseline_chunk` (raw pointer arithmetic into the baseline pool) and
+    `Region::{arm, flush, set_mode, apply_remote, rebaseline, disarm}` and `Drop`: `region::tests`
+    (for example `one_written_byte_is_reported_once`, `a_remote_write_to_a_page_with_a_baseline_is_not_reported`,
+    `a_write_made_while_scanned_survives_the_switch_back_to_trapped`,
+    `rebaseline_never_overwrites_a_concurrent_foreign_write`).
 - Any soundness bug is treated as a security advisory (CireSnave 2026-10-18 RustSec rule).
 - Unsafe surface (to be kept current): `sys/windows` (VEH, `VirtualProtect`, `MapViewOfFile` aliasing),
   `sys/unix` (`sigaction`, `mprotect`, `mmap` aliasing), `region` (raw ptr+len slices, twin/scratch pool, atomics-guarded handler state).

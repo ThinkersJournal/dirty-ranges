@@ -109,6 +109,26 @@ jobs:
           toolchain: stable
       - run: cargo test --test conformance --test conformance_children --test conformance_alloc -- --nocapture
 
+  miri:
+    name: miri (safe modules)
+    runs-on: ubuntu-latest
+    env:
+      # The proptest case writes failure files and reads its settings from the environment, which Miri's
+      # isolation forbids; fewer cases because Miri is slow. The nightly is pinned so a new nightly cannot turn
+      # this red on its own.
+      PROPTEST_DISABLE_FAILURE_PERSISTENCE: "true"
+      PROPTEST_CASES: "24"
+      MIRIFLAGS: -Zmiri-strict-provenance -Zmiri-env-forward=PROPTEST_CASES -Zmiri-env-forward=PROPTEST_DISABLE_FAILURE_PERSISTENCE
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: nightly-2026-09-29
+          components: miri
+      # Only the safe modules: `region` and `sys` call mprotect/VirtualProtect and install fault handlers, which
+      # Miri cannot run (see "UNVERIFIED-by-Miri" in docs/DESIGN.md). The filter also guards against running none.
+      - run: cargo miri test --lib -- diff:: range:: scan:: page_state::
+
   loom:
     name: loom (page-state machine)
     runs-on: ubuntu-latest
