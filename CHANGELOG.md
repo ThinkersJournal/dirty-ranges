@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.10
+- `bsd.yml`: per-step timeouts (20 minutes for installing Rust, 30 for each test step), because the NetBSD job sat in `Install Rust` for 30+ minutes on two attempts of run 39370039359 while FreeBSD and OpenBSD finished.
+
 ## 0.1.9
 - Tests only. NetBSD hung in both signal-chaining cases at the store to the other handler's own page (run 39367038289, step markers): that page was mapped `PROT_NONE`, and the suspect is NetBSD refusing to raise protection on such a mapping. The page is now mapped read/write and then made inaccessible; the other handler reports a failed `mprotect`; a new test `mprotect_can_raise_a_mapping_created_prot_none` asks the OS directly. README: FreeBSD 15.1 and OpenBSD 7.9 rows TESTED from the BSD workflow, NetBSD stays UNVERIFIED (hang).
 

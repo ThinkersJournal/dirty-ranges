@@ -44,14 +44,18 @@ jobs:
           architecture: x86-64
           version: ${{ matrix.version }}
       - name: Install Rust
+        # A package download that stalls (NetBSD, run 39370039359, 30+ minutes) should fail fast, not use the job's 90.
+        timeout-minutes: 20
         run: |
           ${{ matrix.install }}
           rustc --version
           cargo --version
           uname -a
       - name: Tests
+        timeout-minutes: 30
         run: cargo test --all-features --no-fail-fast
       - name: Conformance suite with the controls compiled in
+        timeout-minutes: 30
         env:
           RUSTFLAGS: --cfg dirty_ranges_conformance
         run: cargo test --test conformance --test conformance_children --test conformance_alloc -- --nocapture
