@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.8
+- Tests only: the signal-chaining conformance child prints a `STEP` marker at each stage, so a hung child's output says where it stopped. First BSD VM run (PR #18, run 39366345598): FreeBSD 15.1 and OpenBSD 7.9 pass everything (95 lib tests, conformance with and without controls); NetBSD 11.0 passes the lib tests and the other conformance cases but `chaining_with_the_other_handler_installed_before_ours` and `..._after_ours` hang. Cause not yet known.
+
 ## 0.1.7
 - New workflow `bsd.yml`: FreeBSD 15.1, OpenBSD 7.9 and NetBSD 11.0 (x86-64) in QEMU VMs through `cross-platform-actions/action` v1.6.0 (pinned by SHA), each running the tests and the conformance suite with the controls compiled in. Not yet run: the README rows stay UNVERIFIED until it is green. README Known limits gain the observation from macOS hang-hunt run 39358930277 that the blocked-signal write likely livelocks on the faulting store.
 
