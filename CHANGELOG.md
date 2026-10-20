@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.15
+- Repo metadata only. Adds `.github/CODEOWNERS` (`* @ciresnave`).
+
 ## 0.1.14
 - README only. TESTED rows from CI run 39381650147 (PR #19 at `5ba2758`, all 17 jobs success): Linux aarch64 glibc, Linux x86_64 musl, Windows arm64, macOS x86_64. The three BSD rows now cite the green run on `main` (39381482015 at `f326856`) instead of the PR run. Linux aarch64 musl stays UNVERIFIED.
 
