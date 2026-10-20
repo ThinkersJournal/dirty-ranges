@@ -127,7 +127,7 @@ jobs:
           components: miri
       # Only the safe modules: `region` and `sys` call mprotect/VirtualProtect and install fault handlers, which
       # Miri cannot run (see "UNVERIFIED-by-Miri" in docs/DESIGN.md). The filter also guards against running none.
-      - run: cargo miri test --lib -- diff:: range:: scan:: page_state::
+      - run: "cargo miri test --lib -- diff:: range:: scan:: page_state::"
 
   loom:
     name: loom (page-state machine)
