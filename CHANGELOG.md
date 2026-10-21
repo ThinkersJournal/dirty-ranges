@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.17
+- CI only. NetBSD `Install Rust` tries `pkgin install rust` twice (240 s each), then falls back to rustup's NetBSD build from static.rust-lang.org; `Install Rust` now has 25 minutes. The pkgin mirror stalled it again in run 39394658935 (and on its re-run), so no NetBSD test ran. The Tests steps are unchanged.
+
 ## 0.1.16
 - CI only. NetBSD `Install Rust` retries `pkgin install rust` up to 3 times, each attempt bounded by `timeout 300`, because the pkgin mirror stalled the step to its 20-minute limit in runs 39370039359 and 39381650352 (no test ran in either).
 
