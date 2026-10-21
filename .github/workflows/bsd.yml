@@ -30,8 +30,19 @@ jobs:
             install: sudo pkg_add rust
           - os: netbsd
             version: "11.0"
-            # The pkgin mirror stalled `Install Rust` four times (runs 39370039359, 39381650352): retry, each attempt bounded.
-            install: ok=0; for i in 1 2 3; do if timeout 300 sudo pkgin -y install rust; then ok=1; break; fi; done; test "$ok" = 1
+            # The pkgin mirror stalled `Install Rust` in runs 39370039359, 39381650352, 39394658935 (twice, 15 min each, no output):
+            # two bounded pkgin attempts, then rustup's own NetBSD build (static.rust-lang.org, not the pkgin mirror), linked into
+            # /usr/pkg/bin because each step is a fresh shell. Either way the Tests steps below run unchanged.
+            install: |
+              ok=0
+              for i in 1 2; do if timeout 240 sudo pkgin -y install rust; then ok=1; break; fi; done
+              if [ "$ok" != 1 ]; then
+                echo "pkgin did not install rust; falling back to rustup"
+                timeout 120 ftp -o /tmp/rustup-init https://static.rust-lang.org/rustup/dist/x86_64-unknown-netbsd/rustup-init
+                chmod +x /tmp/rustup-init
+                timeout 480 /tmp/rustup-init -y --profile minimal --default-toolchain stable
+                for b in rustc cargo rustup; do sudo ln -sf "$HOME/.cargo/bin/$b" "/usr/pkg/bin/$b"; done
+              fi
     defaults:
       run:
         shell: cpa.sh {0}
@@ -46,7 +57,7 @@ jobs:
           version: ${{ matrix.version }}
       - name: Install Rust
         # A package download that stalls (NetBSD, run 39370039359, 30+ minutes) should fail fast, not use the job's 90.
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: |
           ${{ matrix.install }}
           rustc --version
