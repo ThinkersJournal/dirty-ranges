@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.18
+- CI only. The BSD workflow gains `workflow_dispatch`, so a run on `main` can be started without a push (used to count consecutive NetBSD runs). Triggers otherwise unchanged.
+
 ## 0.1.17
 - CI only. NetBSD `Install Rust` tries `pkgin install rust` twice (240 s each), then falls back to rustup's NetBSD build from static.rust-lang.org; `Install Rust` now has 25 minutes. The pkgin mirror stalled it again in run 39394658935 (and on its re-run), so no NetBSD test ran. The Tests steps are unchanged.
 
