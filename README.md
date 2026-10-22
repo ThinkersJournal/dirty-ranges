@@ -39,7 +39,7 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 | macOS x86_64 | PASS | **TESTED** (CI, `macos-15-intel`; same run) |
 | FreeBSD 15.1 | PASS (VM) | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.98.1; run 39381482015 on `main` at `f326856`) |
 | OpenBSD 7.9 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.94.1; same run) |
-| NetBSD 11.0 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.96.1; same run). NetBSD refuses `mprotect` on a mapping created `PROT_NONE`; a test fixture had relied on it |
+| NetBSD 11.0 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM; 5 consecutive green runs on `main`, 39651281175 to 39824176019; rustc 1.96.1 from pkgin or 1.99.1 from the rustup fallback, because the pkgin install is flaky: 2 of the 5 fell back). NetBSD refuses `mprotect` on a mapping created `PROT_NONE`; a test fixture had relied on it |
 | Linux with 64 KiB pages | UNVERIFIED | UNVERIFIED |
 | 32-bit targets | UNVERIFIED | UNVERIFIED |
 
