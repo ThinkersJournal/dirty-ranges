@@ -152,3 +152,9 @@ jobs:
           toolchain: stable
       # Loom explores every interleaving; the filter makes sure the loom tests (not the ordinary ones) ran.
       - run: cargo test --release loom_ -- --nocapture
+
+  # Advisory (CireSnave 2026-10-23): not a required check; findings are tracked as ROADMAP rows.
+  portfolio:
+    permissions:
+      contents: read
+    uses: ciresnave/coderipper/.github/workflows/portfolio.yml@c665210ad0972cf3ddb7bc81bdd7800c3248a938
