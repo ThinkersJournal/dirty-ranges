@@ -1,0 +1,13 @@
+# dirty-ranges is a published library (crates.io): these items are its public API, consumed by downstream crates
+# (commy depends on it), not by this repository. Per symbol, not per file, so a new undeclared item is still reported.
+[reachability]
+public_api = [
+  { file = "src/region.rs", symbol = "Mode", reason = "published API of the dirty-ranges crate (crates.io), re-exported from lib.rs; consumed by downstream crates, not by this repository" },
+  { file = "src/region.rs", symbol = "fault_signals_blocked", reason = "published API of the dirty-ranges crate (crates.io), re-exported from lib.rs (Unix); consumed by downstream crates, not by this repository" },
+  { file = "src/scan.rs", symbol = "ScanError", reason = "published API of the dirty-ranges crate (crates.io), re-exported from lib.rs; consumed by downstream crates, not by this repository" },
+  { file = "src/scan.rs", symbol = "scan", reason = "published API (Scanner::scan) of the dirty-ranges crate (crates.io); consumed by downstream crates, not by this repository" },
+  { file = "src/scan.rs", symbol = "apply_remote", reason = "published API (Scanner::apply_remote) of the dirty-ranges crate (crates.io); consumed by downstream crates, not by this repository" },
+  { file = "src/region.rs", symbol = "write_through", reason = "private helper of the published Region::apply_remote; reachable only through it, and the analyser sees no caller of a public method inside this crate" },
+  { file = "src/region.rs", symbol = "rebaseline_chunk", reason = "private helper of the published Region::rebaseline; reachable only through it, and the analyser sees no caller of a public method inside this crate" },
+  { file = "src/sys/unix.rs", symbol = "blocked_fault_signals", reason = "private helper of the published fault_signals_blocked (Unix); reachable only through it" },
+]
