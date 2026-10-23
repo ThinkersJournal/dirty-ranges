@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.26
+- Config only. `.coderipper.toml` declares the crate's public API under `[reachability] public_api`, per symbol with a reason (`Mode`, `fault_signals_blocked`, `Scanner::scan`, `Scanner::apply_remote`, `ScanError`, and the private helpers reachable only through them: `write_through`, `rebaseline_chunk`, `blocked_fault_signals`). None of these has a caller inside the crate by design: it is a published library. Nothing removed or narrowed.
+
 ## 0.1.25
 - Tests and one `let _ =` (no behaviour change). CodeRipper unused-return-values: three `flush` calls in `src/region.rs` tests assert the ranges they return; the conformance `flush` that races writers, `Region`'s `Drop` `protect` (failure already documented as ignorable) and the should-panic `run` call discard explicitly.
 
