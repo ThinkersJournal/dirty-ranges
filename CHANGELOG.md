@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.23
+- Docs only. ROADMAP.md: row 7 records the final region mutants run (command, Windows and Linux counts); rows 8-12 record the CodeRipper baseline, one per rule (reachability, unused-return-values, lint-suppression, licence) and the job's own exit.
+
 ## 0.1.22
 - CI only. Adds an advisory `portfolio` job (the CodeRipper reusable workflow, pinned to c665210). Not a required check.
 
