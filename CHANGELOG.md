@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.20
+- Docs only. ROADMAP.md marks rows 1-6 done and row 7 partly done (region mutation re-run and the publish remain), records the UNVERIFIED platforms and the published state (0.1.0-0.1.2 on crates.io), and `Cargo.toml` `description` no longer says "name reserved; first release pending".
+
 ## 0.1.19
 - Docs only. README NetBSD row states the evidence: 5 consecutive green BSD runs on `main` (39651281175, 39808283210, 39821155713, 39822655046, 39824176019); the pkgin install is flaky, 2 of the 5 used the rustup fallback.
 
