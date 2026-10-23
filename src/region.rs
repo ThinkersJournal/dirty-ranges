@@ -819,8 +819,19 @@ mod tests {
     #[test]
     fn the_query_reports_whether_this_thread_blocks_the_fault_signals() {
         assert!(!fault_signals_blocked());
-        on_a_thread_that_blocks(libc::SIGSEGV, || assert!(fault_signals_blocked()));
-        on_a_thread_that_blocks(libc::SIGBUS, || assert!(fault_signals_blocked()));
+        let ran = std::sync::Arc::new(AtomicUsize::new(0));
+        for sig in [libc::SIGSEGV, libc::SIGBUS] {
+            let ran = ran.clone();
+            on_a_thread_that_blocks(sig, move || {
+                assert!(fault_signals_blocked());
+                ran.fetch_add(1, Ordering::Relaxed);
+            });
+        }
+        assert_eq!(
+            ran.load(Ordering::Relaxed),
+            2,
+            "the helper did not run the closure"
+        );
         assert!(!fault_signals_blocked(), "the block was one thread's");
     }
 
@@ -1446,5 +1457,25 @@ mod tests {
         let region = m.arm(1); // one buffer is not enough for a page: nothing tracked
         assert_eq!(region.armed_pages(), 0);
         region.disarm().unwrap();
+    }
+
+    #[test]
+    fn an_aliased_mapping_removes_its_backing_file_when_dropped() {
+        let a = Aliased::new(1);
+        let path = a.path.clone();
+        assert!(path.exists());
+        drop(a);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn disarm_unprotects_exactly_the_tracked_bytes_of_a_region_that_ends_at_the_mapping() {
+        // The tracked span ends where the mapping ends: a span even one byte too long runs off the end.
+        let m = Map::new(1);
+        let region = m.arm(2);
+        assert_eq!(region.armed_pages(), 1);
+        region.disarm().unwrap();
+        m.write(0, 1);
+        assert_eq!(m.read(0), 1);
     }
 }

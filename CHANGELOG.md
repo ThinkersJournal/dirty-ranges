@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.21
+- Tests only (`src/region.rs` `mod tests`; no library code changed). `cargo mutants` 27.1.0 on `src/region.rs`, whole file, Windows `--lib`, at 78a083c: 170 mutants, 125 caught, 22 timeouts, 8 unviable, 15 missed. New tests: `disarm` on a region that ends at the mapping (kills `armed * page` -> `armed + page` on Windows; on Linux that mutant survives because `mprotect` past the mapping does not reliably fail), the signal-mask test now asserts its closures ran (kills `on_a_thread_that_blocks` -> `()`), and `Aliased` removes its file. The Unix-only mutants were re-run on Linux (rust:bookworm): `fault_signals_blocked` x3 and, after the new tests, `on_a_thread_that_blocks` and `Aliased::drop` are caught. 9 remain, each with no observable effect: `Inner::drop` -> `()` (leaks the pool; only a leak checker sees it); `Region::disarm` -> `Ok(())` and `armed > 0` -> `<` (the `Drop` that follows unprotects anyway; only the error return differs, and forcing `mprotect` to fail needs an unmapped range, racy across test threads); `Region::flush` loop condition `j + 1 < len && dirty[j + 1] == dirty[j] + 1` (3 mutants: protect page by page instead of by run, same end state); `i = j + 1` inside `cfg(dirty_ranges_conformance)` (2 mutants, exercised by the conformance controls job); `Region::drop` `armed > 0` -> `>= 0` (a zero-length protect whose failure is ignored).
+
 ## 0.1.20
 - Docs only. ROADMAP.md marks rows 1-6 done and row 7 partly done (region mutation re-run and the publish remain), records the UNVERIFIED platforms and the published state (0.1.0-0.1.2 on crates.io), and `Cargo.toml` `description` no longer says "name reserved; first release pending".
 
