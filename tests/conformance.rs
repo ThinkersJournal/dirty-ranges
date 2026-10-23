@@ -211,7 +211,8 @@ fn threads_spawned_while_others_fault_do_not_start_with_the_fault_signals_blocke
         .collect();
     let mut bad = vec![];
     for round in 0..300 {
-        region.flush(); // keep the pages re-protecting so the writers keep faulting
+        // What it reports is racing the writers by design; the call keeps the pages re-protecting.
+        let _ = region.flush();
         let probe = std::thread::spawn(thread_mask_bits).join().unwrap();
         let segv_bus = (1u32 << libc::SIGSEGV) | (1u32 << libc::SIGBUS);
         if probe & segv_bus != 0 {

@@ -142,7 +142,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "differ in length")]
     fn different_lengths_panic() {
-        run(&[0; 3], &[0; 4], 0);
+        let _ = run(&[0; 3], &[0; 4], 0); // panics before it returns
     }
 
     proptest! {
