@@ -668,7 +668,7 @@ impl Drop for Region {
         if inner.armed > 0 {
             // SAFETY: the caller's mapping outlives the region by `arm`'s contract. Failure leaves pages
             // read-only, which is no worse than not having tried.
-            unsafe { sys::protect(inner.base, inner.armed * inner.page, true) };
+            let _ = unsafe { sys::protect(inner.base, inner.armed * inner.page, true) };
         }
         if self.slot != usize::MAX {
             SLOTS[self.slot].store(ptr::null_mut(), Ordering::SeqCst);
@@ -748,7 +748,7 @@ mod tests {
         let m = Map::new(4);
         let mut region = m.arm(8);
         m.write(10, 1);
-        region.flush();
+        assert_eq!(region.flush(), vec![r(10, 1)]);
         m.write(10, 2);
         m.write(20, 3);
         assert_eq!(region.flush(), vec![r(10, 1), r(20, 1)]);
@@ -1275,7 +1275,7 @@ mod tests {
         let page = os_page();
         let mut region = m.arm(4);
         m.write(0, 1);
-        region.flush(); // both pages: page 0 has a baseline, page 1 is clean
+        assert_eq!(region.flush(), vec![r(0, 1)]); // page 0 has a baseline, page 1 is clean
         let m = std::sync::Arc::new(m);
         let writer = {
             let m = m.clone();
@@ -1406,7 +1406,7 @@ mod tests {
         let mut m = Aliased::new(1);
         let mut region = m.arm(2);
         m.write(0, 1);
-        region.flush(); // Clean, with a baseline
+        assert_eq!(region.flush(), vec![r(0, 1)]); // Clean, with a baseline
         for at in [2, 3, 4, 6] {
             m.foreign_write(at, 9);
         }

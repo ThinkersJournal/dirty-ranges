@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.25
+- Tests and one `let _ =` (no behaviour change). CodeRipper unused-return-values: three `flush` calls in `src/region.rs` tests assert the ranges they return; the conformance `flush` that races writers, `Region`'s `Drop` `protect` (failure already documented as ignorable) and the should-panic `run` call discard explicitly.
+
 ## 0.1.24
 - No library behaviour change. Every `.rs` file starts with `// SPDX-License-Identifier: MIT OR Apache-2.0` (matches `license` in Cargo.toml); the two `allow` attributes CodeRipper flagged (`dead_code` in `tests/common/mod.rs`, `unconditional_recursion` in `tests/conformance_children.rs`) now carry a `reason`. The CodeRipper `portfolio` job is repinned from c665210 to 789b012 (the merge that stops a default-branch run failing on "ratchet not run").
 
