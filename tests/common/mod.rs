@@ -1,6 +1,10 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Shared helpers for the conformance suite (ported from the SDK lane's trap-conformance spike).
 #![cfg(any(unix, windows))]
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "each test binary includes this module and uses only some of its helpers"
+)]
 
 use dirty_ranges::{Range, Region};
 use memmap2::MmapMut;

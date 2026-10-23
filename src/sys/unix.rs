@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Unix: `mprotect` plus a `SIGSEGV`/`SIGBUS` handler (macOS and the BSDs raise `SIGBUS` for a write to a
 //! read-only page).
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Windows: `VirtualProtect` plus a vectored exception handler for access violations.
 
 use crate::region::{Fault, on_fault};

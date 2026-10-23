@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Operating-system primitives. Everything `unsafe` about talking to the OS lives under this module.
 
 #[cfg(unix)]

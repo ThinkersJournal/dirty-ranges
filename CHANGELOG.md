@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.24
+- No library behaviour change. Every `.rs` file starts with `// SPDX-License-Identifier: MIT OR Apache-2.0` (matches `license` in Cargo.toml); the two `allow` attributes CodeRipper flagged (`dead_code` in `tests/common/mod.rs`, `unconditional_recursion` in `tests/conformance_children.rs`) now carry a `reason`. The CodeRipper `portfolio` job is repinned from c665210 to 789b012 (the merge that stops a default-branch run failing on "ratchet not run").
+
 ## 0.1.23
 - Docs only. ROADMAP.md: row 7 records the final region mutants run (command, Windows and Linux counts); rows 8-12 record the CodeRipper baseline, one per rule (reachability, unused-return-values, lint-suppression, licence) and the job's own exit.
 
