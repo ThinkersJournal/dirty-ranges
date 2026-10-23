@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Trap-conformance cases, ported from the SDK lane's spike (`spike/trap-conformance`, PR #3) to run against
 //! the real crate. Cases that need a misbehaving crate to prove they can fail (the "controls") need
 //! `RUSTFLAGS="--cfg dirty_ranges_conformance"`; the rest run in a normal `cargo test`.

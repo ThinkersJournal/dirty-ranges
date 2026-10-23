@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! A global allocator that faults inside its own critical section. A fault handler that allocates (or takes a
 //! lock the faulting thread may hold) deadlocks here, so the handler is shown to need neither. Ported from the
 //! SDK lane's spike (`spike/trap-conformance`, PR #3). It has its own test binary because the allocator is

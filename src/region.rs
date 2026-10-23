@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! A trapped region: pages are kept read-only, the first write to each faults into a handler that copies a
 //! baseline and unprotects the page, and `flush` re-protects, snapshots and diffs the pages that were written.
 //!

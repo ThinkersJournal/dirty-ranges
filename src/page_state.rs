@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! The per-page state machine shared by the fault handler and the flusher.
 //!
 //! ```text

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Conformance cases that must run in their own process: they end in a signal, install other fault handlers,
 //! or overflow the stack. Ported from the SDK lane's spike (`spike/trap-conformance`, PR #3).
 #![cfg(any(unix, windows))]
@@ -332,7 +333,10 @@ fn chaining_with_the_other_handler_installed_before_ours() {
 
 // ---- stack overflow
 
-#[allow(unconditional_recursion)]
+#[allow(
+    unconditional_recursion,
+    reason = "the child recurses without end on purpose, to overflow its stack"
+)]
 fn recurse(n: u64) -> u64 {
     let a = [n as u8; 1024];
     std::hint::black_box(&a);

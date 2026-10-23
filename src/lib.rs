@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Detect which byte ranges of a memory region changed (first real release pending).
 //!
 //! The design is in `docs/DESIGN.md`. Safe core: range coalescing, the byte diff, the per-page state machine

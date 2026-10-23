@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use crate::Range;
 
 /// Append to `out` the maximal runs of bytes where `old` and `new` differ, as ranges whose offsets are
