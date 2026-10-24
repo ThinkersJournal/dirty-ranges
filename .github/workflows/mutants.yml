@@ -38,5 +38,5 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           # Expected misses are justified in CHANGELOG 0.1.21; anything beyond them is new.
-          # Report-only until the first Linux run fixes the baseline count.
-          exit 0
+          # Baseline (run 40064979549 at fe51c75): 13 missed. Fail on any more.
+          [ "$(wc -l < mutants.out/missed.txt)" -le 13 ]

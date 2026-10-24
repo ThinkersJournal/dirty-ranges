@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.30
+- CI only. `mutants.yml` now fails when the Linux run misses more than 13 mutants. Baseline: run 40064979549 at fe51c75, 170 mutants, 13 missed (1 `Inner::drop`, 6 `disarm`, 5 `flush` arithmetic, 1 `Region::drop` `>`), 126 caught, 23 timeouts, 8 unviable. Same set as the justified misses in 0.1.21. Still not a required check. The advisory `portfolio` job is also repinned from 30e012b to d14a22b (CodeRipper 0.9.14).
+
 ## 0.1.29
 - CI only. New `mutants.yml` workflow (manual and weekly, not part of `ci.yml`, not a required check) runs `cargo mutants -f src/region.rs` on Linux so the cfg(unix) mutants are covered in CI. Report-only: it writes caught/missed counts and the missed list to the job summary.
 
