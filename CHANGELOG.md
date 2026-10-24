@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.1.35
-- Tests only (Linux). `tests/conformance_map_count.rs` fills the process to within 24 mappings of `vm.max_map_count` (any host limit, no root) and checks three things: a few isolated dirty pages still work (control), more isolated dirty pages than mappings left abort loudly with the handler's message (SIGABRT, no hang), and flushing merges the mappings back so repeated rounds stay under the limit.
+- Tests only (Linux). `tests/conformance_map_count.rs` fills the process to within 24 mappings of `vm.max_map_count` (any host limit, no root) and checks three things: a few isolated dirty pages still work (control), more isolated dirty pages than mappings left die loudly with the handler's message (a fault signal, no hang), and flushing merges the mappings back so repeated rounds stay under the limit.
 
 ## 0.1.34
 - CI only. New `test-i686` job runs the suite for `i686-unknown-linux-gnu` (ubuntu-latest) and `i686-pc-windows-msvc` (windows-latest), both 32-bit processes on a 64-bit host kernel. README: 32-bit x86 is now TESTED (run 40127550486 at c5414f3); other 32-bit targets stay UNVERIFIED.

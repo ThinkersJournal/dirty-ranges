@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! `vm.max_map_count` on Linux: every page a writer dirties becomes its own mapping (the fault handler makes
 //! one page writable, which splits the tracked mapping), and the kernel refuses a split past the limit.
-//! The handler then aborts rather than loop (a failed `mprotect` there cannot be recovered), and `flush`
+//! The handler then kills the process rather than loop (a failed `mprotect` there cannot be recovered), and `flush`
 //! re-protects the runs, which merges the mappings again. The cases fill the process's own mapping count to
 //! within `HEADROOM` of the limit, so they work with whatever `vm.max_map_count` the host has, without root.
 #![cfg(target_os = "linux")]
@@ -72,15 +72,16 @@ fn fill_to_headroom() -> bool {
     }
 }
 
-/// Dirty every other page of the first `pages` pages (`count` writes), so no two dirty pages are adjacent.
-fn dirty_isolated(m: &Mapped, first: usize, count: usize) {
+/// Dirty every other page from page `first` (`count` writes of `value`, which must differ from what is
+/// there), so no two dirty pages are adjacent.
+fn dirty_isolated(m: &Mapped, first: usize, count: usize, value: u8) {
     for i in 0..count {
-        m.store((first + 2 * i) * m.page, 1);
+        m.store((first + 2 * i) * m.page, value);
     }
 }
 
 /// With the mapping count `HEADROOM` short of the limit, a few isolated dirty pages are fine. This is the
-/// control for the case below: it shows the fill leaves a working process, so that case's abort is the limit.
+/// control for the case below: it shows the fill leaves a working process, so that case's death is the limit.
 #[test]
 fn a_few_dirty_pages_fit_under_the_map_limit() {
     let name = "a_few_dirty_pages_fit_under_the_map_limit";
@@ -90,7 +91,7 @@ fn a_few_dirty_pages_fit_under_the_map_limit() {
         if !fill_to_headroom() {
             return;
         }
-        dirty_isolated(&m, 0, 4);
+        dirty_isolated(&m, 0, 4, 1);
         assert_eq!(region.flush().len(), 4);
     }) else {
         return;
@@ -99,7 +100,8 @@ fn a_few_dirty_pages_fit_under_the_map_limit() {
 }
 
 /// More isolated dirty pages than the limit has mappings left: the handler's `mprotect` gets ENOMEM and the
-/// process aborts with the handler's message. It must not hang or carry on with a page it could not unprotect.
+/// process prints the handler's message and dies by the fault signal (the handler restores the default
+/// action and the store faults again). It must not hang or carry on with a page it could not unprotect.
 #[test]
 fn exhausting_the_map_count_aborts_loudly() {
     let name = "exhausting_the_map_count_aborts_loudly";
@@ -107,19 +109,17 @@ fn exhausting_the_map_count_aborts_loudly() {
         let m = Mapped::new(80);
         let _region = m.arm(160);
         if !fill_to_headroom() {
-            // not filled: end as the case expects, after the note above
-            eprintln!("dirty-ranges: mprotect failed in the fault handler, aborting");
-            std::process::abort();
+            return;
         }
-        dirty_isolated(&m, 0, 38);
+        dirty_isolated(&m, 0, 38, 1);
     }) else {
         return;
     };
     eprintln!("map-count exhaustion outcome: {outcome:?}");
-    assert!(
-        matches!(outcome, Outcome::Died { signal: Some(s), .. } if s == libc::SIGABRT),
-        "expected SIGABRT: {outcome:?}"
-    );
+    if matches!(outcome, Outcome::Passed { .. }) && outcome.output().contains("case NOT RUN") {
+        return; // the host's limit is too large to fill; the child said so
+    }
+    assert!(outcome.died_by_fault(), "expected a fatal fault signal: {outcome:?}");
     assert!(
         outcome
             .output()
@@ -142,7 +142,7 @@ fn flushing_merges_the_mappings_back() {
         }
         let used = mappings();
         for round in 0..4 {
-            dirty_isolated(&m, 0, 8);
+            dirty_isolated(&m, 0, 8, round as u8 + 1);
             assert_eq!(region.flush().len(), 8, "round {round}");
             assert!(
                 mappings() <= used,
