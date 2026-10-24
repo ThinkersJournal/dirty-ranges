@@ -1,0 +1,42 @@
+name: mutants
+
+# Region mutation testing on Linux (ROADMAP row 13). Not part of CI: ~40 min, run on demand and weekly.
+# Linux is the platform where the cfg(unix) mutants (fault_signals_blocked x3, on_a_thread_that_blocks) exist.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  region:
+    name: cargo-mutants (src/region.rs, linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - run: cargo install cargo-mutants --version 27.1.0 --locked
+      - name: cargo mutants
+        run: |
+          set +e
+          cargo mutants -f src/region.rs -j 1 --timeout 60 -- --lib
+          code=$?
+          echo "cargo-mutants exit code: $code (0 = all caught, 2 = missed mutants, 3 = timeouts)"
+          {
+            echo "## cargo-mutants, src/region.rs, linux"
+            echo "caught: $(wc -l < mutants.out/caught.txt)  missed: $(wc -l < mutants.out/missed.txt)  timeout: $(wc -l < mutants.out/timeout.txt)  unviable: $(wc -l < mutants.out/unviable.txt)"
+            echo '```'
+            cat mutants.out/missed.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Expected misses are justified in CHANGELOG 0.1.21; anything beyond them is new.
+          # Report-only until the first Linux run fixes the baseline count.
+          exit 0
