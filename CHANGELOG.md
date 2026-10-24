@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.27
+- Licence only. LICENSE-MIT copyright holder is now "The dirty-ranges contributors" (was a named person), per CireSnave 2026-10-24 ("Go with your recommendations"). No code change.
+
 ## 0.1.26
 - Config only. `.coderipper.toml` declares the crate's public API under `[reachability] public_api`, per symbol with a reason (`Mode`, `fault_signals_blocked`, `Scanner::scan`, `Scanner::apply_remote`, `ScanError`, and the private helpers reachable only through them: `write_through`, `rebaseline_chunk`, `blocked_fault_signals`). None of these has a caller inside the crate by design: it is a published library. Nothing removed or narrowed.
 
