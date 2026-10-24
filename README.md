@@ -44,7 +44,9 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 | 32-bit x86 (`i686-unknown-linux-gnu`, `i686-pc-windows-msvc`) | UNVERIFIED | **TESTED** (CI: 32-bit processes on a 64-bit host kernel, `ubuntu-latest` and `windows-latest`; run 40127550486 on PR #40 at `c5414f3`, 97 and 95 lib tests passed) |
 | Other 32-bit targets (32-bit ARM, 32-bit on a 32-bit kernel) | UNVERIFIED | UNVERIFIED |
 
-Also UNVERIFIED: `vm.max_map_count` exhaustion, and coexistence with real JVM, Go or sanitizer signal handlers.
+`vm.max_map_count` exhaustion: **TESTED on Linux** (CI, `tests/conformance_map_count.rs`, run 40132071381 on PR #41 at `58ea54d`, green on `ubuntu-latest`, `ubuntu-24.04-arm` and x86_64 musl; the process is filled to 24 mappings short of the limit, which was 262144 on `ubuntu-latest` in the log of the earlier run 40127977219; the later runs hide a passing test's output, so the fill on the arm and musl legs was not seen). Isolated dirty pages beyond what is left kill the process with the handler's message, and `flush` merges the mappings back. Not run on other systems (macOS and the BSDs have no such limit file).
+
+Also UNVERIFIED: coexistence with real JVM, Go or sanitizer signal handlers.
 Miri runs in CI on the safe modules (`diff`, `range`, `scan`, `page_state`); the unsafe paths cannot run under it
 and are listed as UNVERIFIED-by-Miri in `docs/DESIGN.md`. The BSD jobs (`bsd.yml`) were green for FreeBSD, OpenBSD and NetBSD in the run above (VMs, x86-64 only; run on `main`).
 
