@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.36
+- Docs only. ROADMAP.md: spec-to-roadmap audit adds rows 14-25 for work named in `docs/DESIGN.md` and the README that had no row, and corrects row 5's UNVERIFIED list. Three places where DESIGN contradicts the code are recorded in row 16. No code change.
+
 ## 0.1.35
 - Tests only (Linux). `tests/conformance_map_count.rs` fills the process to within 24 mappings of `vm.max_map_count` (any host limit, no root) and checks three things: a few isolated dirty pages still work (control), more isolated dirty pages than mappings left die loudly with the handler's message (a fault signal, no hang), and flushing merges the mappings back so repeated rounds stay under the limit.
 
