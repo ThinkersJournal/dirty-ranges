@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.38
+- Docs only. `docs/DESIGN.md` now matches the code (ROADMAP rows 15 and 16): status no longer "draft, pre-implementation", the API block shows `arm`/`apply_remote`/`rebaseline`/`disarm` as shipped, `arm` does not refuse a thread with blocked fault signals (`fault_signals_blocked()` is the caller's check), excess pool pages stay untracked and the caller scans them, and the crate creates no mapping or alias. No code change.
+
 ## 0.1.37
 - CI only. New `macos-blocked-signal.yml` (manual, and on a pull request touching it) runs the blocked-signal write case five times on `macos-latest` and `macos-15-intel` with output shown. Result (run 40137219741): the write hangs in 5 of 5 rounds on both runners; README Known limits records it. Not a required check.
 

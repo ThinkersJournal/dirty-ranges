@@ -1,6 +1,6 @@
-# dirty-ranges — design (draft, pre-implementation)
+# dirty-ranges — design (implemented; the design record)
 
-Status: **draft for review. No implementation until CireSnave approves the Commy plan (D1/D2).**
+Status: **implemented (crate 0.1.x).** This file is the design record and is kept in step with the code; `README.md` is the record of what is TESTED, `ROADMAP.md` of what is left. Where an early proposal below differs from the code, the text says what the code does.
 Sources (2026-10-18): Commy lane (`[ANSWER]`), commy-sdk-rust lane (`[FINDING]`, spikes `wspike`/`lspike`),
 PM bootstrap answer. Spike numbers below are theirs, measured on WSL2/musl (Linux) and Windows; not re-measured here.
 
@@ -29,26 +29,31 @@ Consumers: `commy-sdk-rust` (every SDK instance maps a file and finds its own wr
 First-class targets, all with Trapped and Scanned modes: **Windows, Linux, macOS, FreeBSD, NetBSD, OpenBSD.**
 No target is "best effort" by design; where a platform cannot be verified yet it is listed UNVERIFIED with
 the reason, never silently downgraded.
-- `sys/windows`: VEH + `VirtualProtect`; views via `MapViewOfFile`.
-- `sys/unix`: shared `sigaction` (`SA_SIGINFO`) + `mprotect` + double `mmap(MAP_SHARED)` alias for Linux, macOS and
-  the BSDs. Per-OS shims: which signals are caught (`SIGSEGV` and `SIGBUS` on macOS/BSD), the fault-address field of
+- `sys/windows`: VEH + `VirtualProtect`.
+- `sys/unix`: shared `sigaction` (`SA_SIGINFO`) + `mprotect` for Linux, macOS and the BSDs.
+- The crate creates no mapping, view or alias: the caller passes `ptr` and `len` of a mapping it made (`mmap`,
+  `MapViewOfFile`, `memmap2`) and, for `apply_remote`, an optional second writable view of the same bytes. Per-OS shims: which signals are caught (`SIGSEGV` and `SIGBUS` on macOS/BSD), the fault-address field of
   `siginfo_t`/`ucontext`, runtime page size (16 KB on Apple Silicon).
 - macOS alternative if signals prove inadequate: Mach `EXC_BAD_ACCESS` exception port served by a handler thread.
 - Scan-only fallback exists for any other target and for pages that cannot be armed; selecting it is explicit and reported.
-- Not-yet-verified (from lane knowledge, untested): macOS, FreeBSD, NetBSD, OpenBSD, aarch64. CI covers Linux, Windows,
-  macOS on hosted runners; the BSDs need a VM or self-hosted runner (PM request, EXPECTATIONS 5.1g/h) and
-  `cross`/`cargo check --target` builds as a floor.
+- What is TESTED and what is not is the README table. CI covers Linux (x86_64 and aarch64, glibc and musl), Windows
+  (x86_64 and arm64), macOS (arm64 and x86_64), 32-bit x86 and the three BSDs (QEMU VMs in `bsd.yml`). A
+  `cargo check --target` floor for unsupported targets is ROADMAP row 22.
 
-## API sketch (proposal; names are open)
+## API (as implemented; the early sketch had `Region::new(ptr, len, mode)` and `apply_remote(&self, Range, ..)`)
 ```rust
-pub struct Range { pub offset: usize, pub len: usize }          // optional serde feature
+pub struct Range { pub offset: usize, pub len: usize }          // the optional serde feature is ROADMAP row 17
 pub enum Mode { Trapped, Scanned }
 pub struct Region { .. }                                         // Send + Sync
 impl Region {
-    pub unsafe fn new(ptr: *mut u8, len: usize, mode: Mode) -> Result<Region, Error>;
-    pub fn set_mode(&mut self, sub: core::ops::Range<usize>, mode: Mode) -> Result<(), Error>;
-    pub fn flush(&mut self) -> Vec<Range>;                       // or poll()
-    pub fn apply_remote(&self, range: Range, bytes: &[u8]) -> Result<(), Error>;
+    pub unsafe fn arm(ptr: *mut u8, len: usize, pool_pages: usize, alias: Option<*mut u8>) -> Result<Region, Error>;
+    pub fn set_mode(&mut self, range: core::ops::Range<usize>, mode: Mode) -> Result<(), Error>;
+    pub fn flush(&mut self) -> Vec<Range>;
+    pub fn apply_remote(&mut self, offset: usize, bytes: &[u8]) -> Result<(), Error>;
+    pub fn rebaseline(&mut self, offset: usize, len: usize) -> Result<(), Error>;
+    pub fn disarm(self) -> Result<(), Error>;
+    pub fn armed_pages(&self) -> usize;
+    pub fn page_size(&self) -> usize;
 }
 ```
 Two views of one file: a protected view for user code and an RW alias for the SDK (the alias is how the
@@ -58,8 +63,8 @@ owner's own writes avoid raising events).
 TESTED PASS: Linux x86_64 and aarch64 (glibc and musl), Windows x86_64 and arm64, FreeBSD (VM), macOS arm64
 (16 KiB pages) and x86_64. The one failing case was a Linux-shaped assertion (macOS kills with SIGKILL when
 SIGSEGV is blocked; still fatal) and is being fixed in the harness.
-UNVERIFIED (the 0.1.0 gate reads this list): macOS, a write from a thread that blocks SEGV/BUS (HANGS on the GitHub macos-26-arm64 runner image, run 39182659564; the spike saw a kill elsewhere; limit documented, not fixed), NetBSD, OpenBSD, Linux with 64 KiB pages, `vm.max_map_count` exhaustion, real JVM/Go/sanitizer
-handlers, 32-bit. The README table is the record; a platform is TESTED for *this crate* only once the crate
+UNVERIFIED at the time of the spike: macOS, a write from a thread that blocks SEGV/BUS (HANGS on the GitHub macos-26-arm64 runner image, run 39182659564; the spike saw a kill elsewhere; limit documented, not fixed), NetBSD, OpenBSD, Linux with 64 KiB pages, `vm.max_map_count` exhaustion, real JVM/Go/sanitizer
+handlers, 32-bit. Since then the crate's own CI has covered most of these; what is still UNVERIFIED is in the README table and ROADMAP row 14. The README table is the record; a platform is TESTED for *this crate* only once the crate
 passes the same cases in CI (the per-OS release gate).
 
 Design facts the harness proved (each becomes a requirement and a test):
@@ -67,14 +72,17 @@ Design facts the harness proved (each becomes a requirement and a test):
 - The flush stall window allocates nothing and takes no locks.
 - `errno` / `GetLastError` must be saved and restored by the handler (the control without restore fails).
 - Use the runtime page size (macOS arm64 is 16 KiB).
-- Refuse to arm or flush from a thread that has SIGSEGV/SIGBUS blocked (such a fault is fatal).
+- A thread that has SIGSEGV/SIGBUS blocked must not write to a trapped region (such a fault is fatal). `Region::arm`
+  does not refuse: it cannot see which threads will write. `fault_signals_blocked()` (Unix) lets a caller check the
+  writing thread; the README "Known limits" has the macOS behaviour.
 
 ## Concurrency (accepted for spike)
 Per-page atomic state: 0 clean, 1 copying, 2 dirty, 3 flushing.
 Handler: CAS 0→1, copy twin, unprotect, →2. Flush: CAS 2→3, re-protect, memcpy live→scratch, CAS 3→0, then diff
 twin vs scratch off the hot path. Double-buffered twin slots; slot freed after diff.
-**The handler never allocates or locks.** Pool is pre-sized; if pool < trapped pages, refuse to arm the excess
-pages, put them in Scanned mode and report which.
+**The handler never allocates or locks.** The pool is pre-sized: if it holds fewer pages than the region, `arm`
+tracks the first `pool_pages / 2` pages only and leaves the rest writable and untracked. `armed_pages()` says how
+many are tracked, and the caller scans the rest (`Scanner`); the excess is decided at `arm` time, never in the handler.
 
 ## Hard rules (documented, and enforced where possible)
 - Never `read()`/`recv()` into a trapped view (Linux: EFAULT/partial write; Windows: error 998/10053, socket dies).
@@ -121,6 +129,6 @@ deps, MIT OR Apache-2.0, CHANGELOG, first release 0.1.0 (PM allocates versions a
 
 ## Open questions
 1. (resolved) Unsafe policy.
-2. `flush()` returning `Vec` vs caller-provided buffer (allocation-free flush?).
-3. Page-size handling (4 KB vs 16 KB aarch64/macOS, Windows allocation granularity 64 KB for views).
-4. File-backed vs anonymous regions: does `Region` own the mapping or only borrow ptr+len? (SDK lane: ptr+len.)
+2. `flush()` returning `Vec` vs caller-provided buffer (allocation-free flush?). Still open: the crate returns `Vec` (ROADMAP row 18).
+3. (resolved) Page size: queried at run time (4 KB, 16 KB on Apple Silicon); the caller owns any view granularity (Windows 64 KB).
+4. (resolved) `Region` borrows `ptr` + `len`; it never owns the mapping.
