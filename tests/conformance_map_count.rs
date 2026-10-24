@@ -119,7 +119,10 @@ fn exhausting_the_map_count_aborts_loudly() {
     if matches!(outcome, Outcome::Passed { .. }) && outcome.output().contains("case NOT RUN") {
         return; // the host's limit is too large to fill; the child said so
     }
-    assert!(outcome.died_by_fault(), "expected a fatal fault signal: {outcome:?}");
+    assert!(
+        outcome.died_by_fault(),
+        "expected a fatal fault signal: {outcome:?}"
+    );
     assert!(
         outcome
             .output()
