@@ -32,7 +32,7 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 | Linux x86_64, glibc | PASS | **TESTED** (CI) |
 | Linux aarch64, glibc | PASS | **TESTED** (CI, `ubuntu-24.04-arm`; run 39381650147 on PR #19 at `5ba2758`) |
 | Linux x86_64, musl | PASS | **TESTED** (CI, `x86_64-unknown-linux-musl` on `ubuntu-latest`; same run) |
-| Linux aarch64, musl | PASS | UNVERIFIED (not in our CI) |
+| Linux aarch64, musl | PASS | **TESTED** (CI, `aarch64-unknown-linux-musl` on `ubuntu-24.04-arm`, binary linked against musl, run on the glibc host; run 40127427374 on PR #39 at `2cd3e1c`, 97 lib tests passed) |
 | Windows x86_64 | PASS | **TESTED** (CI) |
 | Windows arm64 | PASS | **TESTED** (CI, `windows-11-arm`; same run) |
 | macOS arm64 (16 KiB pages) | PASS, except one Linux-shaped assertion (macOS kills with SIGKILL; still fatal) | **TESTED** (CI), except the blocked-signal write below (NOT TESTED) |
