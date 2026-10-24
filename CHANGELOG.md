@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.31
+- CI only. The `portfolio` caller's `uses:` line carries the trailing `# 0.9.14` comment the CodeRipper repin notice asks for. No pin change.
+
 ## 0.1.30
 - CI only. `mutants.yml` now fails when the Linux run misses more than 13 mutants. Baseline: run 40064979549 at fe51c75, 170 mutants, 13 missed (1 `Inner::drop`, 6 `disarm`, 5 `flush` arithmetic, 1 `Region::drop` `>`), 126 caught, 23 timeouts, 8 unviable. Same set as the justified misses in 0.1.21. Still not a required check. The advisory `portfolio` job is also repinned from 30e012b to d14a22b (CodeRipper 0.9.14).
 
