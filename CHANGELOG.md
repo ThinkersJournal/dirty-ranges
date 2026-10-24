@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.37
+- CI only. New `macos-blocked-signal.yml` (manual, and on a pull request touching it) runs the blocked-signal write case five times on `macos-latest` and `macos-15-intel` with output shown. Not a required check.
+
 ## 0.1.36
 - Docs only. ROADMAP.md: spec-to-roadmap audit adds rows 14-25 for work named in `docs/DESIGN.md` and the README that had no row, and corrects row 5's UNVERIFIED list. Three places where DESIGN contradicts the code are recorded in row 16. No code change.
 

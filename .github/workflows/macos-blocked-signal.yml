@@ -1,0 +1,39 @@
+name: macOS blocked-signal write
+
+# Runs the one conformance case "a write from a thread that blocks the fault signals is fatal" on both macOS
+# runners with output shown, so the README can say what each does (killed, or hangs). Manual, and on a pull
+# request that touches this file; not part of ci.yml and not a required check.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/macos-blocked-signal.yml
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  blocked-signal:
+    name: blocked-signal write (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - run: sw_vers && uname -m
+      - name: Five rounds of the case, outcome printed
+        run: |
+          for i in 1 2 3 4 5; do
+            echo "=== round $i ==="
+            cargo test --test conformance_children a_write_from_a_thread_that_blocks -- --nocapture --test-threads=1 || echo "round $i FAILED"
+          done
