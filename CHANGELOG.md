@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.34
+- CI only. New `test-i686` job runs the suite for `i686-unknown-linux-gnu` (ubuntu-latest) and `i686-pc-windows-msvc` (windows-latest), both 32-bit processes on a 64-bit host kernel.
+
 ## 0.1.33
 - CI only. `test-musl` is now a matrix: it also runs the suite for `aarch64-unknown-linux-musl` on `ubuntu-24.04-arm`. The `x86_64` leg keeps its check name. README: Linux aarch64 musl is now TESTED (run 40127427374 at 2cd3e1c).
 
