@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.29
+- CI only. New `mutants.yml` workflow (manual and weekly, not part of `ci.yml`, not a required check) runs `cargo mutants -f src/region.rs` on Linux so the cfg(unix) mutants are covered in CI. Report-only: it writes caught/missed counts and the missed list to the job summary.
+
 ## 0.1.28
 - CI only. The advisory `portfolio` job is repinned from 789b012 to 30e012b. Not a required check.
 
