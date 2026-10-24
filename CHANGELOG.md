@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.28
+- CI only. The advisory `portfolio` job is repinned from 789b012 to 30e012b. Not a required check.
+
 ## 0.1.27
 - Licence only. LICENSE-MIT copyright holder is now "The dirty-ranges contributors" (was a named person), per CireSnave 2026-10-24 ("Go with your recommendations"). No code change.
 
