@@ -41,7 +41,8 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 | OpenBSD 7.9 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.94.1; same run) |
 | NetBSD 11.0 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM; 5 consecutive green runs on `main`, 39651281175 to 39824176019; rustc 1.96.1 from pkgin or 1.99.1 from the rustup fallback, because the pkgin install is flaky: 2 of the 5 fell back). NetBSD refuses `mprotect` on a mapping created `PROT_NONE`; a test fixture had relied on it |
 | Linux with 64 KiB pages | UNVERIFIED | UNVERIFIED |
-| 32-bit targets | UNVERIFIED | UNVERIFIED |
+| 32-bit x86 (`i686-unknown-linux-gnu`, `i686-pc-windows-msvc`) | UNVERIFIED | **TESTED** (CI: 32-bit processes on a 64-bit host kernel, `ubuntu-latest` and `windows-latest`; run 40127550486 on PR #40 at `c5414f3`, 97 and 95 lib tests passed) |
+| Other 32-bit targets (32-bit ARM, 32-bit on a 32-bit kernel) | UNVERIFIED | UNVERIFIED |
 
 Also UNVERIFIED: `vm.max_map_count` exhaustion, and coexistence with real JVM, Go or sanitizer signal handlers.
 Miri runs in CI on the safe modules (`diff`, `range`, `scan`, `page_state`); the unsafe paths cannot run under it

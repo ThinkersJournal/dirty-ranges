@@ -67,6 +67,27 @@ jobs:
           targets: ${{ matrix.target }}
       - run: cargo test --all-features --no-fail-fast --target ${{ matrix.target }}
 
+  # 32-bit x86 (usize is 32 bits): the 32-bit binary runs on the 64-bit host kernel.
+  test-i686:
+    name: test (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: i686-unknown-linux-gnu }
+          - { os: windows-latest, target: i686-pc-windows-msvc }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+      - name: 32-bit C runtime
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc-multilib
+      - run: cargo test --all-features --no-fail-fast --target ${{ matrix.target }}
+
   doc:
     name: doc
     runs-on: ubuntu-latest
