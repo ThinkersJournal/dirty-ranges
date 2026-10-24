@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.33
+- CI only. `test-musl` is now a matrix: it also runs the suite for `aarch64-unknown-linux-musl` on `ubuntu-24.04-arm`. The `x86_64` leg keeps its check name.
 ## 0.1.32
 - CI only. The advisory `portfolio` job is repinned from d14a22b (CodeRipper 0.9.14) to ee9c395 (0.9.24). The did-not-run exclusion for a run on the default branch was already in d14a22b; the `portfolio` job on main passed at 7a262e4 (run 40071646352). Not a required check.
 

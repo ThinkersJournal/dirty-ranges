@@ -51,15 +51,21 @@ jobs:
       - run: cargo test --all-features --no-fail-fast
 
   test-musl:
-    name: test (linux x86_64 musl)
-    runs-on: ubuntu-latest
+    name: test (linux ${{ matrix.arch }} musl)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, os: ubuntu-latest, target: x86_64-unknown-linux-musl }
+          - { arch: aarch64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           toolchain: stable
-          targets: x86_64-unknown-linux-musl
-      - run: cargo test --all-features --no-fail-fast --target x86_64-unknown-linux-musl
+          targets: ${{ matrix.target }}
+      - run: cargo test --all-features --no-fail-fast --target ${{ matrix.target }}
 
   doc:
     name: doc
