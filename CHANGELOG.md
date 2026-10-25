@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.1.45
-- Docs only. New `docs/PATENT-SWEEP.md`: the patent sweep of the 0.1 line (PM [TASK], CireSnave board 286). 7 queries, 6 hits, no needs-review overlap; limitations stated. No `src/` change.
+- Docs only. New `docs/PATENT-SWEEP.md`: the patent sweep of the 0.1 line (PM [TASK], CireSnave board 286). 7 queries, 7 hits (US8127174B1 added: nearest live patent; the crate lacks its checkpoint-data and backup-server elements, consumer-level question flagged); limitations stated. No `src/` change.
 
 ## 0.1.44
 - Docs only. PM rulings of 2026-10-25 recorded in ROADMAP: row 17 (`serde`) struck and dropped from the DESIGN sketch, row 23 won't-build, row 20 remainder deferred, row 25 no publish and the 1.0 gate stated (the stale crates.io 0.1.20 text corrected to 0.1.41). Row 18 stays open pending `commy-sdk-rust`. No `src/` change.
