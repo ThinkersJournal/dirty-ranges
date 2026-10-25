@@ -13,6 +13,7 @@ echo "kernel package: $name ($file)"
 curl -fsSL -o "$dir/kernel.deb" "$base/$file"
 dpkg-deb -x "$dir/kernel.deb" "$dir/pkg"
 img=$(ls "$dir"/pkg/boot/vmlinuz-* | head -n 1)
-if gzip -t "$img" 2>/dev/null; then gunzip -c "$img" > "$dir/Image"; else cp "$img" "$dir/Image"; fi
+# Ubuntu arm64 kernels are EFI zboot images; QEMU needs the raw Image inside.
+if [ "$(dd if="$img" bs=1 skip=4 count=4 2>/dev/null)" = zimg ]; then python3 "$(dirname "$0")/unzboot.py" "$img" "$dir/Image"; else cp "$img" "$dir/Image"; fi
 file "$dir/Image" || true
 ls -l "$dir/Image"

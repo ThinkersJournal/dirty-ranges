@@ -31,7 +31,7 @@ jobs:
           toolchain: stable
           targets: aarch64-unknown-linux-musl
       - name: Install QEMU and initramfs tools
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-arm busybox-static cpio gcc libc6-dev
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-arm busybox-static cpio gcc libc6-dev zstd
 
       # Static musl binaries need nothing from the guest but the kernel.
       - name: Build the test binaries
@@ -41,7 +41,7 @@ jobs:
           python3 tools/qemu-64k/executables.py build.json > executables.txt
           echo "test executables:"; cat executables.txt
 
-      - name: Fetch a 64 KiB-page arm64 kernel (Debian)
+      - name: Fetch a 64 KiB-page arm64 kernel (Ubuntu)
         run: tools/qemu-64k/fetch-kernel.sh kernel
 
       - name: Build the initramfs
