@@ -61,9 +61,11 @@ jobs:
         if: always()
         run: |
           set -u
-          grep -E '^(kernel:|getconf PAGESIZE|KernelPageSize|MMUPageSize|QEMU64K-RESULT)' qemu.log
-          grep -qx 'getconf PAGESIZE = 65536' qemu.log
-          grep -qx 'QEMU64K-RESULT failed=0' qemu.log
+          # The serial console ends lines with CR LF.
+          tr -d '' < qemu.log > qemu.clean
+          grep -E '^(kernel:|getconf PAGESIZE|KernelPageSize|MMUPageSize|QEMU64K-RESULT)' qemu.clean
+          grep -qx 'getconf PAGESIZE = 65536' qemu.clean
+          grep -qx 'QEMU64K-RESULT failed=0' qemu.clean
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
