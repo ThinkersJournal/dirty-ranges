@@ -21,9 +21,16 @@ env:
 
 jobs:
   qemu-64k:
-    name: 64 KiB pages (aarch64 Linux under QEMU)
+    name: 64 KiB pages (aarch64 Linux under QEMU, ${{ matrix.cpu }}, kernel ${{ matrix.kver }})
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { cpu: "cortex-a72", kver: "" }
+          - { cpu: "neoverse-n1", kver: "" }
+          - { cpu: "max,pauth-impdef=on", kver: "6.8" }
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
@@ -42,7 +49,7 @@ jobs:
           echo "test executables:"; cat executables.txt
 
       - name: Fetch a 64 KiB-page arm64 kernel (Ubuntu)
-        run: tools/qemu-64k/fetch-kernel.sh kernel
+        run: tools/qemu-64k/fetch-kernel.sh kernel "${{ matrix.kver }}"
 
       - name: Build the initramfs
         run: tools/qemu-64k/make-initramfs.sh kernel/initrd.gz executables.txt
@@ -50,9 +57,9 @@ jobs:
       - name: Boot and run the suite
         run: |
           set -o pipefail
-          timeout 5m qemu-system-aarch64 -machine virt -cpu max,pauth-impdef=on -smp 2 -m 3G -nographic -no-reboot \
+          timeout 5m qemu-system-aarch64 -machine virt -cpu ${{ matrix.cpu }} -smp 2 -m 3G -nographic -no-reboot \
             -kernel kernel/Image -initrd kernel/initrd.gz \
-            -append "console=ttyAMA0 rdinit=/init panic=-1 ignore_loglevel initcall_debug dyndbg=\"file init/main.c +p\"" | tee qemu.log
+            -append "console=ttyAMA0 rdinit=/init panic=-1 ignore_loglevel" | tee qemu.log
 
       - name: Check the log
         if: always()
@@ -65,5 +72,5 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: qemu-64k-log
+          name: qemu-64k-log-${{ strategy.job-index }}
           path: qemu.log
