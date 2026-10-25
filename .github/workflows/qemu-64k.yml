@@ -62,7 +62,7 @@ jobs:
         run: |
           set -u
           # The serial console ends lines with CR LF.
-          tr -d '' < qemu.log > qemu.clean
+          tr -d '\r' < qemu.log > qemu.clean
           grep -E '^(kernel:|getconf PAGESIZE|KernelPageSize|MMUPageSize|QEMU64K-RESULT)' qemu.clean
           grep -qx 'getconf PAGESIZE = 65536' qemu.clean
           grep -qx 'QEMU64K-RESULT failed=0' qemu.clean
