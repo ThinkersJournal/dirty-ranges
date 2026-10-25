@@ -19,10 +19,13 @@ while read -r exe; do
 done < "$list"
 cat > "$root/init" <<'I'
 #!/bin/busybox sh
+/bin/busybox mkdir -p /proc /sys /dev /tmp
+/bin/busybox mount -t devtmpfs dev /dev
+exec >/dev/console 2>&1 </dev/console
+echo "INIT-START"
 /bin/busybox --install -s /bin
 mount -t proc proc /proc
 mount -t sysfs sys /sys
-mount -t devtmpfs dev /dev
 mount -t tmpfs tmp /tmp
 echo "kernel: $(uname -srm)"
 /bin/getconf-pagesize

@@ -50,7 +50,7 @@ jobs:
       - name: Boot and run the suite
         run: |
           set -o pipefail
-          timeout 100m qemu-system-aarch64 -machine virt -cpu max -smp 2 -m 3G -nographic -no-reboot \
+          timeout 30m qemu-system-aarch64 -machine virt -cpu max -smp 2 -m 3G -nographic -no-reboot \
             -kernel kernel/Image -initrd kernel/initrd.gz \
             -append "console=ttyAMA0 rdinit=/init panic=-1" | tee qemu.log
 
