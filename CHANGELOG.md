@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.43
+- Benches only. New `benches/perf.rs` (`cargo bench --bench perf`, plain `std::time`, no new dependency): `diff` throughput, `Scanner::scan` of 128 MiB, fault cost per first store to a clean page, and `flush` of 1024 dirty pages. Measured numbers are in ROADMAP row 19; no target is claimed. No `src/` change.
 ## 0.1.41
 - Tests and CI (Linux). New `test-tmpfs` job runs the whole suite with `TMPDIR=/dev/shm`, so every mapped file lives on tmpfs; new `tests/conformance_tmpfs.rs` checks the temp directory really is tmpfs (`statfs`) and runs the arm / dirty / flush cycle on a mapping from it. ROADMAP row 20 (tmpfs) done; `/mnt/c` under WSL2 stays open (no hosted runner has it).
 
