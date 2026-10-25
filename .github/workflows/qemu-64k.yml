@@ -21,9 +21,13 @@ env:
 
 jobs:
   qemu-64k:
-    name: 64 KiB pages (aarch64 Linux under QEMU)
+    name: 64 KiB pages (aarch64 Linux under QEMU, smp ${{ matrix.smp }})
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        smp: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
@@ -50,9 +54,9 @@ jobs:
       - name: Boot and run the suite
         run: |
           set -o pipefail
-          timeout 30m qemu-system-aarch64 -machine virt -cpu max -smp 2 -m 3G -nographic -no-reboot \
+          timeout 15m qemu-system-aarch64 -machine virt -cpu max,pauth-impdef=on -smp ${{ matrix.smp }} -m 3G -nographic -no-reboot \
             -kernel kernel/Image -initrd kernel/initrd.gz \
-            -append "console=ttyAMA0 rdinit=/init panic=-1" | tee qemu.log
+            -append "console=ttyAMA0 rdinit=/init panic=-1 ignore_loglevel" | tee qemu.log
 
       - name: Check the log
         if: always()
@@ -65,5 +69,5 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: qemu-64k-log
+          name: qemu-64k-log-smp${{ matrix.smp }}
           path: qemu.log
