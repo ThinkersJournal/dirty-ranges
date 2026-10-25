@@ -42,7 +42,7 @@ the reason, never silently downgraded.
 
 ## API (as implemented; the early sketch had `Region::new(ptr, len, mode)` and `apply_remote(&self, Range, ..)`)
 ```rust
-pub struct Range { pub offset: usize, pub len: usize }          // the optional serde feature is ROADMAP row 17
+pub struct Range { pub offset: usize, pub len: usize }
 pub enum Mode { Trapped, Scanned }
 pub struct Region { .. }                                         // Send + Sync
 impl Region {
