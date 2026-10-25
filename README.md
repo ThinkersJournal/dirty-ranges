@@ -48,7 +48,7 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 
 Mapped file on tmpfs (Linux): **TESTED** (CI `test-tmpfs`: the whole suite with `TMPDIR=/dev/shm`, and `tests/conformance_tmpfs.rs` asserts by `statfs` that the temp directory is tmpfs; run 40169611110 on PR #47 at `b930b4c`). Not tested: WSL2 `/mnt/c`, network or FUSE file systems, antivirus on Windows.
 
-Also UNVERIFIED: coexistence with real JVM, Go or sanitizer signal handlers.
+Also UNVERIFIED: coexistence with real JVM or Go signal handlers. AddressSanitizer on Linux x86-64 is TESTED (`sanitizers.yml`: the suite passes with ASan's handler at the end of the chain); ThreadSanitizer reports the handler's page copy as a race by design and is not gated.
 Miri runs in CI on the safe modules (`diff`, `range`, `scan`, `page_state`); the unsafe paths cannot run under it
 and are listed as UNVERIFIED-by-Miri in `docs/DESIGN.md`. The BSD jobs (`bsd.yml`) were green for FreeBSD, OpenBSD and NetBSD in the run above (VMs, x86-64 only; run on `main`).
 

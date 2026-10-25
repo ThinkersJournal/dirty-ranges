@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.42
+- Tests and CI (Linux). New `sanitizers.yml` (nightly, manual, and on a pull request touching it) runs the whole suite under AddressSanitizer, whose own SIGSEGV handler sits at the end of the chain (ours, the test's stand-in, ASan). New `cfg(dirty_ranges_sanitizer)`: the two chain cases then expect ASan's "Sanitizer: SEGV" report instead of a signal death, and `tests/conformance_map_count.rs` is compiled out (the sanitizer's shadow memory and allocator use mappings of their own). A control step shows the chain cases fail without the cfg. ThreadSanitizer is not gated: it reports every store against the handler's page copy as a race and `stores_racing_the_flush_window_are_never_lost` sees too few racing flushes under its slowdown. No `src/` change. ROADMAP row 21 sanitizers done.
 ## 0.1.41
 - Tests and CI (Linux). New `test-tmpfs` job runs the whole suite with `TMPDIR=/dev/shm`, so every mapped file lives on tmpfs; new `tests/conformance_tmpfs.rs` checks the temp directory really is tmpfs (`statfs`) and runs the arm / dirty / flush cycle on a mapping from it. ROADMAP row 20 (tmpfs) done; `/mnt/c` under WSL2 stays open (no hosted runner has it).
 

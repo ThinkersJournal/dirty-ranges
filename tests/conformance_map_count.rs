@@ -4,7 +4,8 @@
 //! The handler then kills the process rather than loop (a failed `mprotect` there cannot be recovered), and `flush`
 //! re-protects the runs, which merges the mappings again. The cases fill the process's own mapping count to
 //! within `HEADROOM` of the limit, so they work with whatever `vm.max_map_count` the host has, without root.
-#![cfg(target_os = "linux")]
+// Not under a sanitizer: its shadow memory and internal allocator use mappings of their own and die first.
+#![cfg(all(target_os = "linux", not(dirty_ranges_sanitizer)))]
 
 mod common;
 

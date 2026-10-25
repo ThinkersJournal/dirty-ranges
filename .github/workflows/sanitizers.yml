@@ -1,0 +1,50 @@
+name: Sanitizers
+
+# AddressSanitizer on Linux (ROADMAP row 21). ASan installs its own SIGSEGV handler before `main`; `Region` installs
+# ours on top and must chain to it for faults that are not ours. The whole suite runs under ASan, and with
+# `--cfg dirty_ranges_sanitizer` the two chain cases expect the *sanitizer's* report ("AddressSanitizer: SEGV") at the
+# end of the chain (ours -> the test's stand-in -> ASan) instead of a re-raised signal. The map-count cases are
+# compiled out under the cfg: the sanitizer's shadow memory and internal allocator use mappings of their own.
+#
+# ThreadSanitizer is deliberately not here: it reports every application store against the handler's page copy as a
+# data race (it cannot see the fault as a synchronisation point), and `stores_racing_the_flush_window_are_never_lost`
+# sees too few racing flushes under its slowdown. The reports are inherent to the design, not a defect to gate on.
+# Nightly and manual, not a required check.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/sanitizers.yml
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  asan:
+    name: AddressSanitizer (Linux x86-64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: nightly
+      - name: Suite under AddressSanitizer
+        env:
+          RUSTFLAGS: -Zsanitizer=address --cfg dirty_ranges_sanitizer
+        run: cargo test --all-features --no-fail-fast --lib --tests --target x86_64-unknown-linux-gnu -- --nocapture
+      # Control: the same chain case must fail when the cfg is absent, proving it really ends in ASan's handler.
+      - name: Control - without the cfg the chain cases do not see a signal death
+        env:
+          RUSTFLAGS: -Zsanitizer=address
+        run: |
+          if cargo test --all-features --test conformance_children --target x86_64-unknown-linux-gnu chaining_with; then
+            echo "chain cases passed without the sanitizer cfg: the cfg is not doing what it claims"; exit 1
+          fi
