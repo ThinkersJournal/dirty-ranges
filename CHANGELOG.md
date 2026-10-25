@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.43
+- Benches only. New `benches/perf.rs` (`cargo bench --bench perf`, plain `std::time`, no new dependency): `diff` throughput, `Scanner::scan` of 128 MiB, fault cost per first store to a clean page, and `flush` of 1024 dirty pages. Measured numbers are in ROADMAP row 19; no target is claimed. No `src/` change.
+
 ## 0.1.42
 - Tests and CI (Linux). New `sanitizers.yml` (nightly, manual, and on a pull request touching it) runs the whole suite under AddressSanitizer, whose own SIGSEGV handler sits at the end of the chain (ours, the test's stand-in, ASan). New `cfg(dirty_ranges_sanitizer)`: the two chain cases then expect ASan's "Sanitizer: SEGV" report instead of a signal death, and `tests/conformance_map_count.rs` is compiled out (the sanitizer's shadow memory and allocator use mappings of their own). A control step shows the chain cases fail without the cfg. ThreadSanitizer is not gated: it reports every store against the handler's page copy as a race and `stores_racing_the_flush_window_are_never_lost` sees too few racing flushes under its slowdown. No `src/` change. ROADMAP row 21 sanitizers done.
 ## 0.1.41

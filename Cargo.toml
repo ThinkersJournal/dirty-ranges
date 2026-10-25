@@ -1,6 +1,6 @@
 [package]
 name = "dirty-ranges"
-version = "0.1.42"
+version = "0.1.43"
 edition = "2024"
 rust-version = "1.94"
 description = "Detect which byte ranges of a memory region changed between snapshots. Page-fault trapping or scanning, per page."
@@ -31,3 +31,7 @@ loom = "0.7"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)", "cfg(dirty_ranges_conformance)", "cfg(dirty_ranges_sanitizer)"] }
+
+[[bench]]
+name = "perf"
+harness = false
