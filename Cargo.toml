@@ -30,7 +30,7 @@ memmap2 = "0.9"
 loom = "0.7"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)", "cfg(dirty_ranges_conformance)"] }
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)", "cfg(dirty_ranges_conformance)", "cfg(dirty_ranges_sanitizer)"] }
 
 [[bench]]
 name = "perf"
