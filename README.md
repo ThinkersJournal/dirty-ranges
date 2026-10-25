@@ -40,7 +40,7 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 | FreeBSD 15.1 | PASS (VM) | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.98.1; run 39381482015 on `main` at `f326856`) |
 | OpenBSD 7.9 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM, rustc 1.94.1; same run) |
 | NetBSD 11.0 | UNVERIFIED | **TESTED** (CI, `bsd.yml`, QEMU VM; 5 consecutive green runs on `main`, 39651281175 to 39824176019; rustc 1.96.1 from pkgin or 1.99.1 from the rustup fallback, because the pkgin install is flaky: 2 of the 5 fell back). NetBSD refuses `mprotect` on a mapping created `PROT_NONE`; a test fixture had relied on it |
-| Linux with 64 KiB pages | UNVERIFIED | UNVERIFIED |
+| Linux with 64 KiB pages (aarch64) | UNVERIFIED | **TESTED under emulation (functional only, not hardware)** (CI, `qemu-64k.yml`: Ubuntu `7.0.0-38-generic-64k` kernel booted under `qemu-system-aarch64` 8.2.2 TCG, `-cpu neoverse-n1`, on `ubuntu-24.04-arm`; the log shows `getconf PAGESIZE = 65536` and `KernelPageSize: 64 kB`; the suite (`aarch64-unknown-linux-musl` binaries: conformance 6, alloc 1, children 6, map_count 3, lib 97) passed, run 40165909272 on PR #45 at `9608c7a`). Timing, TLB and hardware behaviour are not covered. `-cpu max` hung the guest kernel before init and `cortex-a72` stalled the first conformance test; neither was investigated |
 | 32-bit x86 (`i686-unknown-linux-gnu`, `i686-pc-windows-msvc`) | UNVERIFIED | **TESTED** (CI: 32-bit processes on a 64-bit host kernel, `ubuntu-latest` and `windows-latest`; run 40127550486 on PR #40 at `c5414f3`, 97 and 95 lib tests passed) |
 | Other 32-bit targets (32-bit ARM, 32-bit on a 32-bit kernel) | UNVERIFIED | UNVERIFIED |
 
