@@ -13,7 +13,7 @@ payload = data[offset:offset + size]
 print("zboot payload: %s, %d bytes at offset %d" % (comp, size, offset))
 if comp == "gzip":
     raw = gzip.decompress(payload)
-elif comp == "zstd22":
+elif comp in ("zstd", "zstd22"):
     raw = subprocess.run(["zstd", "-dc"], input=payload, check=True, stdout=subprocess.PIPE).stdout
 else:
     sys.exit("unsupported zboot compression %r" % comp)
