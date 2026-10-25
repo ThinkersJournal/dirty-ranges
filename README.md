@@ -46,6 +46,8 @@ A platform is **TESTED** only when this crate itself passes the trap-conformance
 
 `vm.max_map_count` exhaustion: **TESTED on Linux** (CI, `tests/conformance_map_count.rs`, run 40132071381 on PR #41 at `58ea54d`, green on `ubuntu-latest`, `ubuntu-24.04-arm` and x86_64 musl; the process is filled to 24 mappings short of the limit, which was 262144 on `ubuntu-latest` in the log of the earlier run 40127977219; the later runs hide a passing test's output, so the fill on the arm and musl legs was not seen). Isolated dirty pages beyond what is left kill the process with the handler's message, and `flush` merges the mappings back. Not run on other systems (macOS and the BSDs have no such limit file).
 
+Mapped file on tmpfs (Linux): **TESTED** (CI `test-tmpfs`: the whole suite with `TMPDIR=/dev/shm`, and `tests/conformance_tmpfs.rs` asserts by `statfs` that the temp directory is tmpfs; run 40169611110 on PR #47 at `b930b4c`). Not tested: WSL2 `/mnt/c`, network or FUSE file systems, antivirus on Windows.
+
 Also UNVERIFIED: coexistence with real JVM, Go or sanitizer signal handlers.
 Miri runs in CI on the safe modules (`diff`, `range`, `scan`, `page_state`); the unsafe paths cannot run under it
 and are listed as UNVERIFIED-by-Miri in `docs/DESIGN.md`. The BSD jobs (`bsd.yml`) were green for FreeBSD, OpenBSD and NetBSD in the run above (VMs, x86-64 only; run on `main`).

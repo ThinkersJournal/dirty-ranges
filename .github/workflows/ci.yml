@@ -118,6 +118,22 @@ jobs:
           echo "$out"
           echo "$out" | grep -q 'Region'
 
+  # The tests map files under `std::env::temp_dir()`, which follows `TMPDIR`: run the whole suite with the mapped
+  # files on tmpfs (`/dev/shm`) instead of the runner's disk. `conformance_tmpfs` checks the file system type.
+  test-tmpfs:
+    name: test (tmpfs mapping)
+    runs-on: ubuntu-latest
+    env:
+      TMPDIR: /dev/shm
+      DIRTY_RANGES_EXPECT_TMPFS: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - run: df -T /dev/shm
+      - run: cargo test --all-features --no-fail-fast -- --nocapture
+
   doc:
     name: doc
     runs-on: ubuntu-latest

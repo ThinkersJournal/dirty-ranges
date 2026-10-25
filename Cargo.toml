@@ -1,6 +1,6 @@
 [package]
 name = "dirty-ranges"
-version = "0.1.40"
+version = "0.1.41"
 edition = "2024"
 rust-version = "1.94"
 description = "Detect which byte ranges of a memory region changed between snapshots. Page-fault trapping or scanning, per page."
