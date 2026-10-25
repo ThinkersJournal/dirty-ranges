@@ -2,6 +2,7 @@
 # Download the newest Ubuntu noble-updates arm64 64 KiB-page kernel (Debian ships none) and unpack its image to <dir>/Image.
 set -eu
 dir=$1
+ver=${2:-}   # optional version prefix, e.g. 6.8
 mkdir -p "$dir/pkg"
 base=https://ports.ubuntu.com/ubuntu-ports
 curl -fsSL "$base/dists/noble-updates/main/binary-arm64/Packages.xz" | xz -dc > "$dir/Packages"
