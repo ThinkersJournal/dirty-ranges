@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.39
+- CI only. New `qemu-64k.yml` (manual, and on a pull request touching it) boots an Ubuntu arm64 64 KiB-page kernel (`generic-64k`; Debian ships none) under QEMU system emulation (`-cpu neoverse-n1`) on `ubuntu-24.04-arm` and runs the suite inside; it fails unless the guest log shows `getconf PAGESIZE = 65536` and `failed=0`. README: Linux with 64 KiB pages is now TESTED under emulation (functional only, not hardware; run 40165909272 at 9608c7a). Not a required check. Board 276, decision B.
+
 ## 0.1.38
 - Docs only. `docs/DESIGN.md` now matches the code (ROADMAP rows 15 and 16): status no longer "draft, pre-implementation", the API block shows `arm`/`apply_remote`/`rebaseline`/`disarm` as shipped, `arm` does not refuse a thread with blocked fault signals (`fault_signals_blocked()` is the caller's check), excess pool pages stay untracked and the caller scans them, and the crate creates no mapping or alias. No code change.
 

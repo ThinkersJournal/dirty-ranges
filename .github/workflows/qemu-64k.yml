@@ -1,0 +1,74 @@
+name: QEMU 64 KiB pages
+
+# Linux with 64 KiB pages (CireSnave, board 276: "Decision 276: B"): no GitHub-hosted runner has such a kernel,
+# so boot one under QEMU system emulation (TCG, no KVM) and run the crate's tests inside it. Functional
+# evidence only, slow, and not hardware. Not a required check.
+#
+# CPU model: `-cpu max` hung the 7.0 kernel after its initcalls (runs 40161646470, 40163774717, 40164803216), and
+# `cortex-a72` stalled the first conformance test for 4.5 minutes (run 40165255238; cause not investigated); `neoverse-n1` boots and passes the whole suite in about a minute (same run).
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/qemu-64k.yml
+      - tools/qemu-64k/**
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TARGET: aarch64-unknown-linux-musl
+
+jobs:
+  qemu-64k:
+    name: 64 KiB pages (aarch64 Linux under QEMU)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-unknown-linux-musl
+      - name: Install QEMU and initramfs tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq qemu-system-arm busybox-static cpio gcc libc6-dev zstd
+
+      # Static musl binaries need nothing from the guest but the kernel.
+      - name: Build the test binaries
+        run: |
+          set -euo pipefail
+          cargo test --all-features --no-run --target "$TARGET" --message-format=json > build.json
+          python3 tools/qemu-64k/executables.py build.json > executables.txt
+          echo "test executables:"; cat executables.txt
+
+      - name: Fetch a 64 KiB-page arm64 kernel (Ubuntu)
+        run: tools/qemu-64k/fetch-kernel.sh kernel
+
+      - name: Build the initramfs
+        run: tools/qemu-64k/make-initramfs.sh kernel/initrd.gz executables.txt
+
+      - name: Boot and run the suite
+        run: |
+          set -o pipefail
+          timeout 60m qemu-system-aarch64 -machine virt -cpu neoverse-n1 -smp 2 -m 3G -nographic -no-reboot \
+            -kernel kernel/Image -initrd kernel/initrd.gz \
+            -append "console=ttyAMA0 rdinit=/init panic=-1 quiet" | tee qemu.log
+
+      - name: Check the log
+        if: always()
+        run: |
+          set -u
+          # The serial console ends lines with CR LF.
+          tr -d '\r' < qemu.log > qemu.clean
+          grep -E '^(kernel:|getconf PAGESIZE|KernelPageSize|MMUPageSize|QEMU64K-RESULT)' qemu.clean
+          grep -qx 'getconf PAGESIZE = 65536' qemu.clean
+          grep -qx 'QEMU64K-RESULT failed=0' qemu.clean
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: qemu-64k-log
+          path: qemu.log
