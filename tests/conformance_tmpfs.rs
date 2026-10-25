@@ -37,7 +37,8 @@ fn the_temp_directory_is_tmpfs_when_the_job_says_so() {
 fn arm_dirty_flush_works_on_a_file_mapped_from_the_temp_directory() {
     let page = page_size();
     let m = Mapped::new(8);
-    let mut region = m.arm(8);
+    // `arm` tracks pool_pages / 2 pages, so 16 covers all 8.
+    let mut region = m.arm(16);
     m.store(page + 5, 0x11);
     m.store(6 * page, 0x22);
     let r = |offset, len| Range { offset, len };
