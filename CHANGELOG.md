@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.44
+- Docs only. PM rulings of 2026-10-25 recorded in ROADMAP: row 17 (`serde`) struck and dropped from the DESIGN sketch, row 23 won't-build, row 20 remainder deferred, row 25 no publish and the 1.0 gate stated (the stale crates.io 0.1.20 text corrected to 0.1.41). Row 18 stays open pending `commy-sdk-rust`. No `src/` change.
+
 ## 0.1.43
 - Benches only. New `benches/perf.rs` (`cargo bench --bench perf`, plain `std::time`, no new dependency): `diff` throughput, `Scanner::scan` of 128 MiB, fault cost per first store to a clean page, and `flush` of 1024 dirty pages. Measured numbers are in ROADMAP row 19; no target is claimed. No `src/` change.
 
