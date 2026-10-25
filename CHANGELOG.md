@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.40
+- CI only. New `unsupported-target` job: `cargo check --target wasm32-unknown-unknown --all-features` builds (the scanner and `diff` only), and a probe crate that names `dirty_ranges::Region` fails to compile there, so an unsupported target is a compile error, never a silent no-op. ROADMAP row 22 done. (0.1.39 is #45, the QEMU 64 KiB job.)
+
 ## 0.1.39
 - CI only. New `qemu-64k.yml` (manual, and on a pull request touching it) boots an Ubuntu arm64 64 KiB-page kernel (`generic-64k`; Debian ships none) under QEMU system emulation (`-cpu neoverse-n1`) on `ubuntu-24.04-arm` and runs the suite inside; it fails unless the guest log shows `getconf PAGESIZE = 65536` and `failed=0`. README: Linux with 64 KiB pages is now TESTED under emulation (functional only, not hardware; run 40165909272 at 9608c7a). Not a required check. Board 276, decision B.
 
