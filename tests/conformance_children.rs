@@ -307,10 +307,14 @@ fn chain_body(ours_first: bool) {
 
 fn assert_chain(outcome: Outcome) {
     let output = outcome.output();
+    // Under a sanitizer (`--cfg dirty_ranges_sanitizer`) the handler at the end of the chain is the sanitizer's own:
+    // it reports the fault and exits instead of re-raising the signal.
+    #[cfg(dirty_ranges_sanitizer)]
+    let ended = output.contains("Sanitizer: SEGV");
+    #[cfg(not(dirty_ranges_sanitizer))]
+    let ended = outcome.died_by_fault();
     assert!(
-        output.contains("TRAPPED-OK OTHER-OK")
-            && output.contains("OTHER-SAW-UNRELATED")
-            && outcome.died_by_fault(),
+        output.contains("TRAPPED-OK OTHER-OK") && output.contains("OTHER-SAW-UNRELATED") && ended,
         "{outcome:?}"
     );
 }
