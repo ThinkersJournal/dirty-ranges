@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.46
+- Docs only. `docs/PATENT-SWEEP.md`: US5123101 claims now read (no overlap; address translation hardware), so no hit is left unread; the record names version 0.1.45. No `src/` change.
+
 ## 0.1.45
 - Docs only. New `docs/PATENT-SWEEP.md`: the patent sweep of the 0.1 line (PM [TASK], CireSnave board 286). 7 queries, 7 hits (US8127174B1 added: nearest live patent; the crate lacks its checkpoint-data and backup-server elements, consumer-level question flagged); limitations stated. No `src/` change.
 
