@@ -128,6 +128,58 @@ fn bench_region() {
     );
 }
 
+/// Bare re-protect: the OS call alone, with no twin copy and no range building, for the DESIGN "re-protect 1024
+/// pages about 0.1 ms" figure. One call over the whole range, and one call per page, each timed after the pages
+/// were made writable again (the timed call is the one that makes them read-only).
+fn bench_bare_protect() {
+    let page = page_size();
+    let pages = 1024;
+    let len = pages * page;
+    let mut m = MmapMut::map_anon(len).unwrap();
+    let base = m.as_mut_ptr();
+    #[cfg(unix)]
+    let protect = |p: *mut u8, n: usize, writable: bool| {
+        let prot = if writable {
+            libc::PROT_READ | libc::PROT_WRITE
+        } else {
+            libc::PROT_READ
+        };
+        assert_eq!(unsafe { libc::mprotect(p.cast(), n, prot) }, 0);
+    };
+    #[cfg(windows)]
+    let protect = |p: *mut u8, n: usize, writable: bool| {
+        use windows_sys::Win32::System::Memory::{PAGE_READONLY, PAGE_READWRITE, VirtualProtect};
+        let mut old = 0;
+        let prot = if writable { PAGE_READWRITE } else { PAGE_READONLY };
+        assert_ne!(unsafe { VirtualProtect(p.cast(), n, prot, &mut old) }, 0);
+    };
+    let mut whole = Vec::new();
+    let mut each = Vec::new();
+    for _ in 0..RUNS {
+        protect(base, len, true);
+        let t = Instant::now();
+        protect(base, len, false);
+        whole.push(t.elapsed());
+        protect(base, len, true);
+        let t = Instant::now();
+        for p in 0..pages {
+            protect(unsafe { base.add(p * page) }, page, false);
+        }
+        each.push(t.elapsed());
+    }
+    protect(base, len, true);
+    let (w, e) = (median(whole), median(each));
+    println!(
+        "bare re-protect, {pages} pages, one call:  {:>8.3} ms  (median of {RUNS})",
+        w.as_secs_f64() * 1e3
+    );
+    println!(
+        "bare re-protect, {pages} pages, per page:  {:>8.3} ms  ({:.2} us/page)",
+        e.as_secs_f64() * 1e3,
+        e.as_secs_f64() * 1e6 / pages as f64
+    );
+}
+
 fn main() {
     println!(
         "dirty-ranges {} on {} {}, {} runs, median",
@@ -139,4 +191,5 @@ fn main() {
     bench_diff();
     bench_scan();
     bench_region();
+    bench_bare_protect();
 }
