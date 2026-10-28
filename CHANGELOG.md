@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.47
+- Bench only. `benches/perf.rs` gains the bare re-protect measurement (the OS call alone, no twin copy or range building), closing the open half of ROADMAP row 19. No `src/` change.
+
 ## 0.1.46
 - Docs only. `docs/PATENT-SWEEP.md`: US5123101 claims now read (no overlap; address translation hardware), so no hit is left unread; the record names version 0.1.45. No `src/` change.
 
