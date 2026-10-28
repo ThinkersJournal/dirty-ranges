@@ -150,7 +150,11 @@ fn bench_bare_protect() {
     let protect = |p: *mut u8, n: usize, writable: bool| {
         use windows_sys::Win32::System::Memory::{PAGE_READONLY, PAGE_READWRITE, VirtualProtect};
         let mut old = 0;
-        let prot = if writable { PAGE_READWRITE } else { PAGE_READONLY };
+        let prot = if writable {
+            PAGE_READWRITE
+        } else {
+            PAGE_READONLY
+        };
         assert_ne!(unsafe { VirtualProtect(p.cast(), n, prot, &mut old) }, 0);
     };
     let mut whole = Vec::new();
