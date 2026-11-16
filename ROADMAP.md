@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of crate 0.1.20. Keep this file current: update it in the same PR as the work.
+Status as of crate 0.1.48. Keep this file current: update it in the same PR as the work.
 
 1. **Design PR**: DONE. `docs/DESIGN.md`.
 2. **Gate: CireSnave approves Commy plan D1/D2**: DONE (implementation proceeded; approval itself not recorded here).

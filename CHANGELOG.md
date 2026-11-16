@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.48
+- Tests and docs. New `tests/conformance_registry.rs` fills the 64-region registry, asserts the 65th `Region::arm` is `Error::RegistryFull` and that a freed slot can be armed again; it runs in its own process because the registry is process-wide. Control: with `MAX_REGIONS` mutated to 65 the test fails. README "at most 64 regions" is now TESTED (it had no test; the one `RegistryFull` test checked only the message). No `src/` change.
+
 ## 0.1.47
 - Bench only. `benches/perf.rs` gains the bare re-protect measurement (the OS call alone, no twin copy or range building), closing the open half of ROADMAP row 19. No `src/` change.
 
