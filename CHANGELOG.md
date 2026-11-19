@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.50
+- Tests only. **Fix for ROADMAP row 26:** on a 32-bit process `fill_to_headroom` no longer tries to fill a `vm.max_map_count` whose one-page mappings need more than 2 GiB of address space; it prints "case NOT RUN on this host" with the reason and returns, as it already did above `MAX_FILLABLE` (no `#[ignore]`). The diagnostic showed why the job went red on the ubuntu-26.04 image: `max_map_count 1048576`, 32-bit, `mmap` ENOMEM at `VmSize 4193208 kB` (run 44566821816). Diagnostic part: `tests/conformance_map_count.rs`: when the fill `mmap` fails the panic now says why (errno, `max_map_count`, pointer width, the `Vm*` lines of `/proc/self/status`; not the mapping count, because reading `/proc/self/maps` itself failed with `OutOfMemory` in the first CI run, run 44565234005) instead of a bare `0xffffffff != 0xffffffff`. Diagnostic for ROADMAP row 26 (i686 Linux CI red on the ubuntu-26.04 image); no behaviour change and the case still fails there until row 26 is fixed. Compiled for `x86_64-unknown-linux-gnu` locally; not run on Linux. No `src/` change.
+
 ## 0.1.49
 - Docs only. ROADMAP row 26 (i686 Linux CI red on the `ubuntu-26.04` image, diagnosis and a dated deadline) and the README platform table no longer claims `i686-unknown-linux-gnu` TESTED while it is red. No `src/` change.
 
