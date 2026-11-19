@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.1.50
-- Tests only. `tests/conformance_map_count.rs`: when the fill `mmap` fails the panic now says why (errno, `max_map_count`, mapping count, pointer width, the `Vm*` lines of `/proc/self/status`) instead of a bare `0xffffffff != 0xffffffff`. Diagnostic for ROADMAP row 26 (i686 Linux CI red on the ubuntu-26.04 image); no behaviour change and the case still fails there until row 26 is fixed. Compiled for `x86_64-unknown-linux-gnu` locally; not run on Linux. No `src/` change.
+- Tests only. `tests/conformance_map_count.rs`: when the fill `mmap` fails the panic now says why (errno, `max_map_count`, pointer width, the `Vm*` lines of `/proc/self/status`; not the mapping count, because reading `/proc/self/maps` itself failed with `OutOfMemory` in the first CI run, run 44565234005) instead of a bare `0xffffffff != 0xffffffff`. Diagnostic for ROADMAP row 26 (i686 Linux CI red on the ubuntu-26.04 image); no behaviour change and the case still fails there until row 26 is fixed. Compiled for `x86_64-unknown-linux-gnu` locally; not run on Linux. No `src/` change.
 
 ## 0.1.49
 - Docs only. ROADMAP row 26 (i686 Linux CI red on the `ubuntu-26.04` image, diagnosis and a dated deadline) and the README platform table no longer claims `i686-unknown-linux-gnu` TESTED while it is red. No `src/` change.
