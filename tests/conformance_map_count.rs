@@ -68,7 +68,17 @@ fn fill_to_headroom() -> bool {
                     0,
                 )
             };
-            assert_ne!(p, libc::MAP_FAILED, "mmap while filling");
+            if p == libc::MAP_FAILED {
+                // ROADMAP row 26: on 32-bit CI this fails with no detail; say what the process had.
+                let errno = std::io::Error::last_os_error();
+                let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+                let vm: Vec<&str> = status.lines().filter(|l| l.starts_with("Vm")).collect();
+                panic!(
+                    "mmap while filling: {errno}; max_map_count {max}, mappings now {}, pointer width {} bits, {vm:?}",
+                    mappings(),
+                    usize::BITS
+                );
+            }
         }
     }
 }
