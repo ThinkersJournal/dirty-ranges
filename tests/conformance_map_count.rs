@@ -18,6 +18,10 @@ const HEADROOM: usize = 24;
 /// A host whose limit is above this is not filled (millions of mmaps); the case then says so and returns.
 const MAX_FILLABLE: usize = 4_000_000;
 
+/// On a 32-bit process, the most address space the fill may take: half of the 4 GiB, a chosen margin for the
+/// binary, libraries, stacks and heap. 1 GiB was filled on the 24.04 image (limit 262144); 4 GiB cannot be.
+const ADDRESS_SPACE_FILLABLE: u64 = 2 << 30;
+
 fn max_map_count() -> usize {
     std::fs::read_to_string("/proc/sys/vm/max_map_count")
         .expect("read /proc/sys/vm/max_map_count")
@@ -42,6 +46,17 @@ fn fill_to_headroom() -> bool {
         return false;
     }
     let page = page_size();
+    // One page per mapping: filling a limit of `max` takes `max * page` bytes of address space. A 32-bit process
+    // has 4 GiB at most, so a large limit cannot be reached (ROADMAP row 26: the ubuntu-26.04 image has
+    // 1,048,576, i.e. 4 GiB, and `mmap` fails with ENOMEM at VmSize 4193208 kB). Say so and do not run.
+    if usize::BITS == 32 && (max as u64) * (page as u64) > ADDRESS_SPACE_FILLABLE {
+        eprintln!(
+            "vm.max_map_count is {max}: {max} one-page mappings need more than {} MiB of a {}-bit address space: case NOT RUN on this host",
+            ADDRESS_SPACE_FILLABLE >> 20,
+            usize::BITS
+        );
+        return false;
+    }
     let mut flip = false;
     loop {
         let have = mappings();
