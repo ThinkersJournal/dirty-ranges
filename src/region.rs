@@ -591,6 +591,21 @@ impl Region {
 
     /// Report the byte ranges written since the last flush (sorted, coalesced, byte-exact) and re-arm.
     pub fn flush(&mut self) -> Vec<Range> {
+        self.flush_pending();
+        std::mem::take(&mut self.pending)
+    }
+
+    /// Like [`flush`](Self::flush), but appends the ranges to `out` instead of returning a new `Vec`, so a
+    /// caller that owns a reusable buffer pays no allocation per flush. Existing contents of `out` are
+    /// kept untouched; only the ranges of this flush are sorted and coalesced among themselves.
+    pub fn flush_into(&mut self, out: &mut Vec<Range>) {
+        self.flush_pending();
+        out.extend_from_slice(&self.pending);
+        self.pending.clear(); // keeps the capacity for the next flush
+    }
+
+    /// The flush proper: leaves the sorted, coalesced ranges in `self.pending`.
+    fn flush_pending(&mut self) {
         // SAFETY: allocated in `arm`, freed only in `Drop`; a separate borrow so `self.dirty` stays usable.
         let inner = unsafe { &*self.inner };
         let page = inner.page;
@@ -644,7 +659,7 @@ impl Region {
             }
         }
         // ---- stall window over: allocating is fine from here.
-        let mut out = std::mem::take(&mut self.pending);
+        let out = &mut self.pending;
         for &p in &self.dirty {
             let cur = usize::from(inner.current[p].load(Ordering::Acquire));
             // SAFETY: two distinct page-sized buffers inside the pool; only this flusher reads them.
@@ -654,11 +669,10 @@ impl Region {
                     std::slice::from_raw_parts(inner.buffer(p, 1 - cur), page),
                 )
             };
-            diff(old, new, p * page, &mut out);
+            diff(old, new, p * page, out);
             inner.current[p].store((1 - cur) as u8, Ordering::Release); // the snapshot is the next baseline
         }
-        coalesce(&mut out);
-        out
+        coalesce(out);
     }
 }
 
