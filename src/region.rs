@@ -212,6 +212,10 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
     }
     let pi = (addr - inner.base) / inner.page;
     let state = &inner.state[pi];
+    // Conformance builds only: turn a handler livelock (ROADMAP #55, macOS control hang) into a loud abort that
+    // names the page and state, so a hang reports who loops. Not async-signal-safe (eprintln): diagnostic only.
+    #[cfg(dirty_ranges_conformance)]
+    let mut spins: u64 = 0;
     loop {
         match state.load() {
             State::Clean => {
@@ -241,7 +245,22 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
                 return Some(Fault::Resume);
             }
             // Another thread is capturing or the flusher is snapshotting: wait without a lock.
-            State::Copying | State::Flushing => std::hint::spin_loop(),
+            State::Copying | State::Flushing => {
+                #[cfg(dirty_ranges_conformance)]
+                {
+                    spins += 1;
+                    if spins == 2_000_000_000 {
+                        eprintln!(
+                            "dirty-ranges: handler livelock: page {pi} stuck in {:?} after {spins} spins (addr {addr:#x}, valid {}, current {})",
+                            state.load(),
+                            inner.valid[pi].load(Ordering::Acquire),
+                            inner.current[pi].load(Ordering::Acquire)
+                        );
+                        std::process::abort();
+                    }
+                }
+                std::hint::spin_loop()
+            }
             // Already writable: another thread won the race.
             State::Dirty => return Some(Fault::Resume),
         }
