@@ -34,6 +34,38 @@ fn page_size_is_the_runtime_one_and_ranges_straddle_page_boundaries() {
 }
 
 #[test]
+fn flush_into_appends_and_matches_flush() {
+    let page = page_size();
+    let m = Mapped::new(6);
+    let mut region = m.arm(16);
+    // Existing contents are kept, even when they would coalesce with or sort after the new ranges.
+    let mut out = vec![r(9 * page, 4), r(0, 1)];
+    m.store(2 * page - 1, 0xAA);
+    m.store(2 * page, 0xBB);
+    m.store(5 * page - 1, 0xCC);
+    region.flush_into(&mut out);
+    assert_eq!(
+        out,
+        vec![
+            r(9 * page, 4),
+            r(0, 1),
+            r(2 * page - 1, 2),
+            r(5 * page - 1, 1)
+        ]
+    );
+    // Reuse: the next epoch appends again; an unchanged region appends nothing.
+    out.clear();
+    region.flush_into(&mut out);
+    assert_eq!(out, vec![]);
+    m.store(11, 9);
+    region.flush_into(&mut out);
+    assert_eq!(out, vec![r(11, 1)]);
+    // And `flush` still works after `flush_into` (the scratch buffer is shared).
+    m.store(12, 9);
+    assert_eq!(region.flush(), vec![r(12, 1)]);
+}
+
+#[test]
 fn pool_exhaustion_leaves_the_rest_to_the_caller_and_a_scan_converges() {
     let m = Mapped::new(16);
     let page = m.page;

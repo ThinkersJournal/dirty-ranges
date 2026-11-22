@@ -212,6 +212,10 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
     }
     let pi = (addr - inner.base) / inner.page;
     let state = &inner.state[pi];
+    // Conformance builds only: turn a handler livelock (ROADMAP #55, macOS control hang) into a loud abort that
+    // names the page and state, so a hang reports who loops. Not async-signal-safe (eprintln): diagnostic only.
+    #[cfg(dirty_ranges_conformance)]
+    let mut spins: u64 = 0;
     loop {
         match state.load() {
             State::Clean => {
@@ -241,7 +245,22 @@ unsafe fn handle(inner: &Inner, addr: usize) -> Option<Fault> {
                 return Some(Fault::Resume);
             }
             // Another thread is capturing or the flusher is snapshotting: wait without a lock.
-            State::Copying | State::Flushing => std::hint::spin_loop(),
+            State::Copying | State::Flushing => {
+                #[cfg(dirty_ranges_conformance)]
+                {
+                    spins += 1;
+                    if spins == 2_000_000_000 {
+                        eprintln!(
+                            "dirty-ranges: handler livelock: page {pi} stuck in {:?} after {spins} spins (addr {addr:#x}, valid {}, current {})",
+                            state.load(),
+                            inner.valid[pi].load(Ordering::Acquire),
+                            inner.current[pi].load(Ordering::Acquire)
+                        );
+                        std::process::abort();
+                    }
+                }
+                std::hint::spin_loop()
+            }
             // Already writable: another thread won the race.
             State::Dirty => return Some(Fault::Resume),
         }
@@ -591,6 +610,21 @@ impl Region {
 
     /// Report the byte ranges written since the last flush (sorted, coalesced, byte-exact) and re-arm.
     pub fn flush(&mut self) -> Vec<Range> {
+        self.flush_pending();
+        std::mem::take(&mut self.pending)
+    }
+
+    /// Like [`flush`](Self::flush), but appends the ranges to `out` instead of returning a new `Vec`, so a
+    /// caller that owns a reusable buffer pays no allocation per flush. Existing contents of `out` are
+    /// kept untouched; only the ranges of this flush are sorted and coalesced among themselves.
+    pub fn flush_into(&mut self, out: &mut Vec<Range>) {
+        self.flush_pending();
+        out.extend_from_slice(&self.pending);
+        self.pending.clear(); // keeps the capacity for the next flush
+    }
+
+    /// The flush proper: leaves the sorted, coalesced ranges in `self.pending`.
+    fn flush_pending(&mut self) {
         // SAFETY: allocated in `arm`, freed only in `Drop`; a separate borrow so `self.dirty` stays usable.
         let inner = unsafe { &*self.inner };
         let page = inner.page;
@@ -644,7 +678,7 @@ impl Region {
             }
         }
         // ---- stall window over: allocating is fine from here.
-        let mut out = std::mem::take(&mut self.pending);
+        let out = &mut self.pending;
         for &p in &self.dirty {
             let cur = usize::from(inner.current[p].load(Ordering::Acquire));
             // SAFETY: two distinct page-sized buffers inside the pool; only this flusher reads them.
@@ -654,11 +688,10 @@ impl Region {
                     std::slice::from_raw_parts(inner.buffer(p, 1 - cur), page),
                 )
             };
-            diff(old, new, p * page, &mut out);
+            diff(old, new, p * page, out);
             inner.current[p].store((1 - cur) as u8, Ordering::Release); // the snapshot is the next baseline
         }
-        coalesce(&mut out);
-        out
+        coalesce(out);
     }
 }
 
