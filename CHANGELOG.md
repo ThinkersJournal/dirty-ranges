@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.53
+- CI only: portfolio workflow pin ee9c3950 (0.9.24) moved to coderipper 467fd259 (0.48.1), dirty-ranges#60. No code change; not breaking. Allocated by pm-assist.
+
 ## 0.1.52
 - **Additive API.** `Region::flush_into(&mut Vec<Range>)` appends the ranges of a flush to a caller-owned buffer (existing contents untouched; this flush's ranges are sorted and coalesced among themselves), so a caller that reuses a buffer pays no allocation per flush. `flush()` is unchanged in behaviour (now a wrapper over the same code). ROADMAP row 18: the consumer (`commy-sdk-rust`) answered that `flush() -> Vec<Range>` does not matter to them and named `flush_into` as the shape they would take; no breaking change. New test `flush_into_appends_and_matches_flush`.
 - **Diagnostic (ROADMAP #55, `--cfg dirty_ranges_conformance` builds only):** the handler's wait on a `Copying`/`Flushing` page aborts after 2e9 spins, printing the page, state, `valid` and `current`, so a third macOS control hang names who loops instead of timing out silently. No effect on normal builds.
